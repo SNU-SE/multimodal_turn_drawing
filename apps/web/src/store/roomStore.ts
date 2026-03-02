@@ -82,6 +82,12 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 if (!localPlayerId) {
                     localPlayerId = generateMockUUID()
                     localStorage.setItem('local_player_id', localPlayerId)
+
+                    // Create user in DB to satisfy canvas_logs player_id FK constraint
+                    await supabase.from('users').insert({
+                        id: localPlayerId,
+                        admin_alias: `Guest_${localPlayerId.substring(0, 4)}`
+                    } as any)
                 }
 
                 const isPlayer1 = room.player1_id === localPlayerId || (!room.player1_id)
@@ -96,7 +102,9 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
                 // Broadcast for fast stroke syncing
                 channel.on('broadcast', { event: 'stroke' }, (payload) => {
-                    set((state) => ({ strokes: [...state.strokes, payload.stroke] }))
+                    if (payload.payload?.stroke) {
+                        set((state) => ({ strokes: [...state.strokes, payload.payload.stroke] }))
+                    }
                 })
 
                 channel.on('broadcast', { event: 'clear' }, () => {
@@ -104,11 +112,30 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 })
 
                 channel.on('broadcast', { event: 'typing' }, (payload) => {
-                    set({
-                        isAnswering: payload.isAnswering,
-                        answerText: payload.text || ""
-                    })
+                    if (payload.payload) {
+                        set({
+                            isAnswering: payload.payload.isAnswering,
+                            answerText: payload.payload.text || ""
+                        })
+                    }
                 })
+
+                // Broadcast for readiness
+                channel.on('broadcast', { event: 'ready' }, (payload) => {
+                    if (payload.payload) {
+                        set({ partnerReady: payload.payload.isReady })
+                    }
+                })
+
+                // Listen to Postgres changes for this specific room (Turn state, current_question etc.)
+                channel.on(
+                    'postgres' as any,
+                    { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` },
+                    (payload: any) => {
+                        const updatedRoom = payload.new as RoomRow
+                        set({ room: updatedRoom })
+                    }
+                )
 
                 channel.subscribe()
             } catch (err: any) {
@@ -123,8 +150,16 @@ export const useRoomStore = create<RoomState>((set, get) => {
         },
 
         toggleReady: () => {
-            // In real scenario, emit ready state via broadcast or DB update
-            set((state) => ({ isReady: !state.isReady }))
+            const isReady = !get().isReady
+            set({ isReady })
+
+            if (channel) {
+                channel.send({
+                    type: 'broadcast',
+                    event: 'ready',
+                    payload: { isReady }
+                })
+            }
         },
 
         addStroke: (stroke: any) => {
@@ -203,7 +238,22 @@ export const useRoomStore = create<RoomState>((set, get) => {
         },
 
         endTurn: async () => {
-            // logic to flip turn
+            const { room } = get()
+            if (!room) return
+
+            const turnState = room.turn_state as any
+            const nextPlayerId = room.player1_id === get().playerId ? room.player2_id : room.player1_id
+
+            // Only update DB if we have both players or at least we pretend to flip it
+            const payload: Partial<RoomRow> = {
+                turn_state: {
+                    ...turnState,
+                    currentPlayerId: nextPlayerId,
+                    timeLeft: 60,
+                    isPaused: false
+                }
+            }
+            await supabase.from('rooms').update(payload as never).eq('id', room.id)
         },
 
         cleanup: () => {

@@ -1,17 +1,31 @@
-import { Link } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { useParams, Link } from "react-router-dom"
 import { ArrowLeft, Download, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { supabase } from "@/lib/supabase"
+import type { Database } from "@turn-based-drawing/supabase"
 
-const MOCK_ROOMS = [
-    { id: "r1", code: "748301", p1: "A팀 홍길동", p2: "A팀 이순신", status: "completed", turn: "완료됨", question: "5/5" },
-    { id: "r2", code: "192834", p1: "A팀 강감찬", p2: "A팀 유관순", status: "playing", turn: "Player 1 (45초)", question: "2/5" },
-    { id: "r3", code: "567123", p1: "A팀 안중근", p2: "A팀 윤봉길", status: "pending", turn: "대기중", question: "0/5" },
-]
+type RoomRow = Database['public']['Tables']['rooms']['Row']
 
 export default function AdminRoomGroup() {
-    // const { groupId } = useParams()
+    const { groupId } = useParams()
+    const [rooms, setRooms] = useState<RoomRow[]>([])
+
+    useEffect(() => {
+        const fetchRooms = async () => {
+            const { data } = await supabase
+                .from('rooms')
+                .select('*')
+                // Real app: .eq('group_id', groupId) 
+                // Currently just fetching all for demo
+                .order('created_at', { ascending: false })
+
+            if (data) setRooms(data as RoomRow[])
+        }
+        fetchRooms()
+    }, [groupId])
 
     return (
         <div className="space-y-6">
@@ -29,11 +43,11 @@ export default function AdminRoomGroup() {
                 <div className="flex gap-4">
                     <div className="text-sm">
                         <p className="text-muted-foreground mb-1">총 세션</p>
-                        <p className="text-2xl font-bold">12</p>
+                        <p className="text-2xl font-bold">{rooms.length}</p>
                     </div>
                     <div className="text-sm border-l pl-4">
                         <p className="text-muted-foreground mb-1">진행중</p>
-                        <p className="text-2xl font-bold text-primary">5</p>
+                        <p className="text-2xl font-bold text-primary">{rooms.filter(r => r.status === 'playing').length}</p>
                     </div>
                 </div>
                 <div className="flex gap-2">
@@ -61,7 +75,7 @@ export default function AdminRoomGroup() {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {MOCK_ROOMS.map((room) => (
+                        {rooms.map((room) => (
                             <TableRow key={room.id}>
                                 <TableCell className="font-medium font-mono text-lg">{room.code}</TableCell>
                                 <TableCell>
@@ -69,20 +83,20 @@ export default function AdminRoomGroup() {
                                     {room.status === "playing" && <Badge className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">진행중</Badge>}
                                     {room.status === "pending" && <Badge variant="outline" className="text-muted-foreground">대기중</Badge>}
                                 </TableCell>
-                                <TableCell>{room.question}</TableCell>
+                                <TableCell>{room.current_question_index + 1} / 5</TableCell>
                                 <TableCell>
                                     <div className="flex flex-col gap-1 text-sm">
                                         <span className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-red-500"></span> {room.p1}
+                                            <span className="w-2 h-2 rounded-full bg-red-500"></span> {room.player1_id ? '참여중' : '대기중'}
                                         </span>
                                         <span className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span> {room.p2}
+                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span> {room.player2_id ? '참여중' : '대기중'}
                                         </span>
                                     </div>
                                 </TableCell>
                                 <TableCell>
                                     <span className={room.status === 'playing' ? 'text-primary font-medium' : 'text-muted-foreground'}>
-                                        {room.turn}
+                                        {room.status === 'completed' ? '완료됨' : '대기중 혹은 진행'}
                                     </span>
                                 </TableCell>
                                 <TableCell className="text-right">

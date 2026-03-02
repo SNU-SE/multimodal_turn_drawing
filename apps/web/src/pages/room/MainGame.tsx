@@ -14,10 +14,10 @@ export default function MainGame() {
     } = useRoomStore()
 
     // Turn State matching from DB logic (mocked for UI interaction via realtime)
-    // In real implementation, `room.turn_state` would parse into isMyTurn
     const turnState = room?.turn_state as any
+    // For our mock, we can rely on isPlayer1 from the store and currentPlayerId
     const currentPlayerId = turnState?.currentPlayerId || room?.player1_id
-    const isMyTurn = currentPlayerId === playerId
+    const isMyTurn = currentPlayerId ? currentPlayerId === playerId : isPlayer1
 
     const [timeLeft, setTimeLeft] = useState(room?.turn_state ? (turnState.timeLeft || 60) : 60)
 
