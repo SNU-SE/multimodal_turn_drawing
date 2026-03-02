@@ -3,9 +3,15 @@ import { Users, Info, Eraser } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { FreehandCanvas } from "@/components/canvas/FreehandCanvas"
+import { logger } from "@/lib/logger"
+import { useEffect } from "react"
 
 export default function LobbyWait() {
     const { room, isPlayer1, partnerReady, isReady, toggleReady, strokes, addStroke, clearStrokes } = useRoomStore()
+
+    useEffect(() => {
+        logger.info(`Lobby Wait Mounted for room ${room?.id}. I am Player 1? ${isPlayer1}. Partner ready? ${partnerReady}`)
+    }, [room?.id, isPlayer1, partnerReady])
 
     const playerColor = isPlayer1 ? "#F45B69" : "#3b82f6"
     const playerRoleName = isPlayer1 ? "Player 1 (Red)" : "Player 2 (Blue)"

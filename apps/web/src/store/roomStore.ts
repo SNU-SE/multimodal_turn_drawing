@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@turn-based-drawing/supabase'
+import { logger } from "@/lib/logger"
 
 type RoomRow = Database['public']['Tables']['rooms']['Row']
 
@@ -62,6 +63,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         isAnswering: false,
 
         joinRoom: async (code: string) => {
+            logger.info('Attempting to join room with code:', code)
             set({ error: null })
             try {
                 const { data, error } = await supabase
@@ -102,16 +104,19 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
                 // Broadcast for fast stroke syncing
                 channel.on('broadcast', { event: 'stroke' }, (payload) => {
+                    logger.debug('Received broadcast: stroke', payload.payload?.stroke?.points?.length, 'points')
                     if (payload.payload?.stroke) {
                         set((state) => ({ strokes: [...state.strokes, payload.payload.stroke] }))
                     }
                 })
 
                 channel.on('broadcast', { event: 'clear' }, () => {
+                    logger.debug('Received broadcast: clear canvas')
                     set({ strokes: [] })
                 })
 
                 channel.on('broadcast', { event: 'typing' }, (payload) => {
+                    logger.debug('Received broadcast: typing', payload.payload)
                     if (payload.payload) {
                         set({
                             isAnswering: payload.payload.isAnswering,
@@ -122,23 +127,28 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
                 // Broadcast for readiness
                 channel.on('broadcast', { event: 'ready' }, (payload) => {
+                    logger.info(`Partner readiness status changed:`, payload.payload?.isReady)
                     if (payload.payload) {
                         set({ partnerReady: payload.payload.isReady })
                     }
                 })
 
-                // Listen to Postgres changes for this specific room (Turn state, current_question etc.)
+                // Listen to Postgres changes
                 channel.on(
                     'postgres' as any,
                     { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` },
                     (payload: any) => {
+                        logger.info('Postgres Room Update received:', payload.new)
                         const updatedRoom = payload.new as RoomRow
                         set({ room: updatedRoom })
                     }
                 )
 
-                channel.subscribe()
+                channel.subscribe((status) => {
+                    logger.info(`Realtime Channel status: ${status}`)
+                })
             } catch (err: any) {
+                logger.error('Error joining room:', err.message)
                 set({ error: err.message, isConnected: false })
             }
         },
@@ -151,6 +161,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         toggleReady: () => {
             const isReady = !get().isReady
+            logger.info(`Toggling local ready state to: ${isReady}`)
             set({ isReady })
 
             if (channel) {

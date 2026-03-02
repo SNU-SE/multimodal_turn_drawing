@@ -4,6 +4,7 @@ import { useRoomStore } from "@/store/roomStore"
 import LobbyWait from "./LobbyWait"
 import MainGame from "./MainGame"
 import { Loader2 } from "lucide-react"
+import { logger } from "@/lib/logger"
 
 export default function RoomWrapper() {
     const { code } = useParams()
@@ -13,6 +14,7 @@ export default function RoomWrapper() {
 
     useEffect(() => {
         if (code) {
+            logger.info('User attempting to join room code:', code)
             joinRoom(code)
         }
         return () => {
@@ -46,8 +48,10 @@ export default function RoomWrapper() {
 
     // Route depending on room status
     if (room.status === 'playing') {
+        logger.debug(`Room ${room.id} is playing. Routing to MainGame.`)
         return <MainGame />
     }
 
+    logger.debug(`Room ${room.id} is pending/completed. Routing to LobbyWait.`)
     return <LobbyWait />
 }

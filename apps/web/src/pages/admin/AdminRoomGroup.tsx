@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import { supabase } from "@/lib/supabase"
 import type { Database } from "@turn-based-drawing/supabase"
+import { logger } from "@/lib/logger"
 
 type RoomRow = Database['public']['Tables']['rooms']['Row']
 
@@ -15,6 +16,7 @@ export default function AdminRoomGroup() {
 
     useEffect(() => {
         const fetchRooms = async () => {
+            logger.info(`Admin fetching rooms for group: ${groupId || 'ALL(Demo)'}`)
             const { data } = await supabase
                 .from('rooms')
                 .select('*')
@@ -22,7 +24,10 @@ export default function AdminRoomGroup() {
                 // Currently just fetching all for demo
                 .order('created_at', { ascending: false })
 
-            if (data) setRooms(data as RoomRow[])
+            if (data) {
+                logger.info(`Admin fetched ${data.length} rooms successfully.`, data)
+                setRooms(data as RoomRow[])
+            }
         }
         fetchRooms()
     }, [groupId])
