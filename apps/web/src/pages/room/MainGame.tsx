@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { Pointer, Edit3, Trash2, Send, CheckCircle2 } from "lucide-react"
+import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,25 +13,27 @@ export default function MainGame() {
         isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn
     } = useRoomStore()
 
-    // Turn State matching from DB logic (mocked for UI interaction via realtime)
+    // Turn State
     const turnState = room?.turn_state as any
-    // For our mock, we can rely on isPlayer1 from the store and currentPlayerId
     const currentPlayerId = turnState?.currentPlayerId || room?.player1_id
     const isMyTurn = currentPlayerId ? currentPlayerId === playerId : isPlayer1
 
     const [timeLeft, setTimeLeft] = useState(room?.turn_state ? (turnState.timeLeft || 60) : 60)
 
+    // Answer feedback state
+    const [answerFeedback, setAnswerFeedback] = useState<{ answer: string; isCorrect: boolean } | null>(null)
+
     // Current question
     const currentQuestionIndex = room?.current_question_index || 0
     const currentQuestionNum = currentQuestionIndex + 1
     const currentQuestionObj = questions[currentQuestionIndex]
-    const totalQuestions = 5 // From DB or standard limit
+    const totalQuestions = questions.length || 0
 
-    // Canvas State local to the user
+    // Canvas State
     const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#3b82f6")
     const [width, setWidth] = useState(6)
 
-    // Timer simulation countdown (syncs back with Server ideally via Realtime broadcasts)
+    // Timer countdown (only on my turn)
     useEffect(() => {
         if (!turnState?.isPaused && isMyTurn && timeLeft > 0) {
             const timer = setInterval(() => {
@@ -41,6 +43,51 @@ export default function MainGame() {
         }
     }, [turnState?.isPaused, isMyTurn, timeLeft])
 
+    // Reset local time when turn switches or question advances
+    useEffect(() => {
+        if (turnState?.timeLeft) {
+            setTimeLeft(turnState.timeLeft)
+        }
+    }, [turnState?.currentPlayerId, currentQuestionIndex, turnState?.timeLeft])
+
+    // Listen for answer_result broadcast (via store channel — we handle it via room update)
+    // Clear feedback after 3s
+    useEffect(() => {
+        if (answerFeedback) {
+            const t = setTimeout(() => setAnswerFeedback(null), 3000)
+            return () => clearTimeout(t)
+        }
+    }, [answerFeedback])
+
+    // ── Game Completed Screen ─────────────────────────────────────────────────
+    if (room?.status === 'completed') {
+        return (
+            <div className="flex h-screen w-full bg-background items-center justify-center">
+                <Card className="shadow-2xl border-primary/20 max-w-lg w-full mx-4">
+                    <CardContent className="p-10 flex flex-col items-center gap-6 text-center">
+                        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Trophy className="w-10 h-10 text-primary" />
+                        </div>
+                        <div>
+                            <h2 className="text-3xl font-bold mb-2">모든 문제 완료!</h2>
+                            <p className="text-muted-foreground">
+                                총 {totalQuestions}문제의 턴제 드로잉이 종료되었습니다.<br />
+                                수고 많으셨습니다! 🎉
+                            </p>
+                        </div>
+                        <div className="w-full bg-muted rounded-lg p-4 text-left space-y-1">
+                            <p className="text-sm text-muted-foreground">방 코드</p>
+                            <p className="font-mono text-xl font-bold">{room.code}</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            관리자가 결과를 다운로드할 수 있습니다.
+                        </p>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
     return (
         <div className="flex h-screen w-full bg-background overflow-hidden relative">
 
@@ -49,6 +96,16 @@ export default function MainGame() {
                 <h2 className="text-2xl font-bold mb-4">화면 방향 오류</h2>
                 <p className="text-muted-foreground">이 플랫폼은 가로 모드(Landscape) 태블릿 및 PC에 최적화되어 있습니다. 기기를 가로로 회전해주세요.</p>
             </div>
+
+            {/* Answer Feedback Toast */}
+            {answerFeedback && (
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all ${answerFeedback.isCorrect ? 'bg-green-500' : 'bg-destructive'}`}>
+                    {answerFeedback.isCorrect
+                        ? <><CheckCircle2 className="w-5 h-5" /> 정답! 🎉</>
+                        : <><XCircle className="w-5 h-5" /> 오답. 다음 문제로...</>
+                    }
+                </div>
+            )}
 
             {/* LEFT 1/3: Question & Answer Sidebar */}
             <aside className="w-1/3 flex flex-col border-r border-border bg-card shrink-0 shadow-sm z-10">
@@ -65,7 +122,7 @@ export default function MainGame() {
                     </div>
                     <div className="flex items-center gap-2">
                         <span className={`text-xl font-bold tabular-nums ${timeLeft <= 10 ? 'text-destructive animate-pulse' : ''}`}>
-                            00:{timeLeft.toString().padStart(2, '0')}
+                            {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
                         </span>
                     </div>
                 </div>
@@ -74,7 +131,6 @@ export default function MainGame() {
                 <div className="flex-1 p-6 flex flex-col items-center justify-center border-b bg-white overflow-hidden relative">
                     <p className="text-sm font-medium text-muted-foreground absolute top-4 left-4">Question</p>
                     <div className="w-full h-full max-h-[300px] border-2 border-dashed border-muted-foreground/30 rounded-xl flex items-center justify-center text-muted-foreground bg-muted/10 relative overflow-hidden group">
-                        {/* Real app: questions table query for image_url */}
                         {currentQuestionObj?.image_url ? (
                             <img
                                 src={currentQuestionObj.image_url}
@@ -117,6 +173,9 @@ export default function MainGame() {
                             <Input
                                 value={answerText}
                                 onChange={(e) => updateAnswerText(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && isMyTurn) submitAnswer()
+                                }}
                                 placeholder="여기에 정답을 입력하세요"
                                 className="h-14 text-lg"
                                 autoFocus={isMyTurn}
@@ -131,7 +190,11 @@ export default function MainGame() {
                                     >
                                         취소
                                     </Button>
-                                    <Button onClick={() => submitAnswer()} className="h-12 flex-1 bg-green-600 hover:bg-green-700">
+                                    <Button
+                                        onClick={() => submitAnswer()}
+                                        className="h-12 flex-1 bg-green-600 hover:bg-green-700"
+                                        disabled={!answerText.trim()}
+                                    >
                                         <Send className="mr-2 w-4 h-4" /> 최종 제출
                                     </Button>
                                 </div>

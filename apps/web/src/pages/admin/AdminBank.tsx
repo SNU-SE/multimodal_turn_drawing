@@ -20,6 +20,7 @@ export default function AdminBank() {
     const [qType, setQType] = useState<"multiple_choice" | "essay">("essay")
     const [options, setOptions] = useState<string[]>(["", "", "", ""])
     const [mcAnswers, setMcAnswers] = useState<string[]>([])
+    const [timeLimit, setTimeLimit] = useState<number>(60)
 
     const fetchQuestions = async () => {
         logger.info("Fetching questions...")
@@ -83,7 +84,7 @@ export default function AdminBank() {
                 correct_answer: qType === 'multiple_choice' ? mcAnswers.sort().join(',') : answer.trim(),
                 question_type: qType,
                 options: qType === 'multiple_choice' ? options : null,
-                default_time_limit: 60
+                default_time_limit: timeLimit
             })
 
             if (dbError) throw dbError
@@ -93,6 +94,7 @@ export default function AdminBank() {
             setAnswer("")
             setOptions(["", "", "", ""])
             setMcAnswers([])
+            setTimeLimit(60)
             fetchQuestions()
         } catch (err: any) {
             logger.error("Upload failed:", err)
@@ -156,6 +158,21 @@ export default function AdminBank() {
                                     <SelectContent>
                                         <SelectItem value="essay">주관식 (Essay)</SelectItem>
                                         <SelectItem value="multiple_choice">객관식 (Multiple Choice)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2 w-full md:w-1/4">
+                                <Label>턴당 제한 시간 (초)</Label>
+                                <Select value={String(timeLimit)} onValueChange={(val) => setTimeLimit(Number(val))}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="30">30초</SelectItem>
+                                        <SelectItem value="45">45초</SelectItem>
+                                        <SelectItem value="60">60초 (기본)</SelectItem>
+                                        <SelectItem value="90">90초</SelectItem>
+                                        <SelectItem value="120">120초</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -265,7 +282,7 @@ export default function AdminBank() {
                                     <div>
                                         <p className="font-semibold">{q.title || '제목 없음'}</p>
                                         <p className="text-xs text-muted-foreground mt-1">
-                                            {q.question_type === 'essay' ? '주관식' : '객관식'} | 정답: {q.question_type === 'multiple_choice' ? `${q.correct_answer}번` : q.correct_answer}
+                                            {q.question_type === 'essay' ? '주관식' : '객관식'} | 정답: {q.question_type === 'multiple_choice' ? `${q.correct_answer}번` : q.correct_answer} | ⏱ {q.default_time_limit}초
                                         </p>
                                     </div>
                                     <Button

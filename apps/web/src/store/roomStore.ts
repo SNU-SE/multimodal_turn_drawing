@@ -38,6 +38,7 @@ interface RoomState {
     cancelAnswer: () => void
     updateAnswerText: (text: string) => void
     submitAnswer: () => Promise<void>
+    advanceQuestion: () => Promise<void>
     endTurn: () => Promise<void>
 
     // Added to trigger room updates to partner
@@ -250,24 +251,128 @@ export const useRoomStore = create<RoomState>((set, get) => {
         },
 
         submitAnswer: async () => {
-            // Logic to insert into room_questions
-            set({ isAnswering: false })
-            // move to next question logic
+            const { room, questions, answerText } = get()
+            if (!room || !answerText.trim()) return
+
+            const currentQuestionIndex = room.current_question_index || 0
+            const currentQuestion = questions[currentQuestionIndex]
+
+            if (!currentQuestion) {
+                logger.error('No current question found at index', currentQuestionIndex)
+                set({ isAnswering: false })
+                return
+            }
+
+            // Auto-grade: compare submitted answer with correct_answer
+            let isCorrect = false
+            const correctAnswer = currentQuestion.correct_answer
+            if (correctAnswer) {
+                if (currentQuestion.question_type === 'multiple_choice') {
+                    // For MC, answers are stored as comma-separated indices like "1,3"
+                    isCorrect = answerText.trim() === correctAnswer.trim()
+                } else {
+                    // For essay, case-insensitive match
+                    isCorrect = answerText.trim().toLowerCase() === correctAnswer.trim().toLowerCase()
+                }
+            }
+
+            logger.info(`Answer submitted: "${answerText}" | Correct: "${correctAnswer}" | Match: ${isCorrect}`)
+
+            // Save answer to room_questions table
+            try {
+                await (supabase as any)
+                    .from('room_questions')
+                    .update({
+                        submitted_answer: answerText.trim(),
+                        is_correct: isCorrect
+                    })
+                    .eq('room_id', room.id)
+                    .eq('question_id', currentQuestion.id)
+            } catch (err) {
+                logger.error('Failed to save answer:', err)
+            }
+
+            set({ isAnswering: false, answerText: '' })
+
+            // Broadcast typing stopped
+            if (channel) {
+                channel.send({ type: 'broadcast', event: 'typing', payload: { isAnswering: false, text: '' } })
+                // Broadcast answer result to partner
+                channel.send({
+                    type: 'broadcast',
+                    event: 'answer_result',
+                    payload: { answer: answerText.trim(), isCorrect, questionIndex: currentQuestionIndex }
+                })
+            }
+
+            // Advance to next question after a short delay
+            setTimeout(() => {
+                get().advanceQuestion()
+            }, 1500)
+        },
+
+        advanceQuestion: async () => {
+            const { room, questions } = get()
+            if (!room) return
+
+            const currentIndex = room.current_question_index || 0
+            const nextIndex = currentIndex + 1
+
+            // C3: Check if all questions are done
+            if (nextIndex >= questions.length) {
+                logger.info('All questions completed! Finishing game...')
+                const payload = { status: 'completed' as const, current_question_index: currentIndex }
+                await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+
+                const updatedRoom = { ...room, ...payload }
+                if (channel) {
+                    channel.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
+                }
+                set({ room: updatedRoom, strokes: [] })
+                return
+            }
+
+            // C2: Advance to next question
+            const nextQuestion = questions[nextIndex]
+            const nextTimeLeft = nextQuestion?.default_time_limit || 60
+
+            logger.info(`Advancing to question ${nextIndex + 1}/${questions.length}`)
+
+            const payload = {
+                current_question_index: nextIndex,
+                turn_state: {
+                    currentPlayerId: room.player1_id, // Reset turn to Player 1
+                    timeLeft: nextTimeLeft,
+                    isPaused: false
+                }
+            }
+
+            await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+
+            const updatedRoom = { ...room, ...payload }
+            if (channel) {
+                channel.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
+            }
+            set({ room: updatedRoom, strokes: [] }) // Clear canvas for new question
         },
 
         endTurn: async () => {
-            const { room } = get()
+            const { room, questions } = get()
             if (!room) return
 
             const turnState = room.turn_state as any
             const nextPlayerId = room.player1_id === get().playerId ? room.player2_id : room.player1_id
+
+            // Identify current question for time limit
+            const currentQ = questions[room.current_question_index]
+            const nextTimeLeft = currentQ?.default_time_limit || 60
 
             // Only update DB if we have both players or at least we pretend to flip it
             const payload: Partial<RoomRow> = {
                 turn_state: {
                     ...turnState,
                     currentPlayerId: nextPlayerId,
-                    timeLeft: 60,
+                    timeLeft: nextTimeLeft,
                     isPaused: false
                 }
             }

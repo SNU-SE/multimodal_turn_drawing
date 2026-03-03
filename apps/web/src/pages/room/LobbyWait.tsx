@@ -8,7 +8,7 @@ import { logger } from "@/lib/logger"
 import { useEffect } from "react"
 
 export default function LobbyWait() {
-    const { room, isPlayer1, partnerReady, isReady, toggleReady, strokes, addStroke, clearStrokes, broadcastRoomUpdate } = useRoomStore()
+    const { room, isPlayer1, partnerReady, isReady, toggleReady, strokes, addStroke, clearStrokes, broadcastRoomUpdate, questions } = useRoomStore()
 
     useEffect(() => {
         logger.info(`Lobby Wait Mounted for room ${room?.id}. I am Player 1? ${isPlayer1}. Partner ready? ${partnerReady}`)
@@ -23,7 +23,7 @@ export default function LobbyWait() {
                     // Initialize turn_state
                     const initialTurnState = {
                         currentPlayerId: room.player1_id,
-                        timeLeft: 60,
+                        timeLeft: questions && questions.length > 0 ? questions[0].default_time_limit : 60,
                         isPaused: false
                     }
                     await (supabase as any).from('rooms').update({

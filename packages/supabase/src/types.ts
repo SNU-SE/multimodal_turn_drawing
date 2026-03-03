@@ -125,6 +125,7 @@ export interface Database {
                     room_id: string
                     question_id: string
                     submitted_answer: string | null
+                    is_correct: boolean | null
                     created_at: string
                 }
                 Insert: {
@@ -132,6 +133,7 @@ export interface Database {
                     room_id: string
                     question_id: string
                     submitted_answer?: string | null
+                    is_correct?: boolean | null
                     created_at?: string
                 }
                 Update: {
@@ -139,6 +141,7 @@ export interface Database {
                     room_id?: string
                     question_id?: string
                     submitted_answer?: string | null
+                    is_correct?: boolean | null
                     created_at?: string
                 }
             }
