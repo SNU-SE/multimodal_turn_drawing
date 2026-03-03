@@ -67,10 +67,24 @@ export default function AdminRoomGroup() {
 
                 const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as string[][]
 
-                // Assume Row 1 is headers: [방 이름, Player 1, Player 2]
                 const rows = data.slice(1).filter(r => r.length >= 1)
 
                 logger.info(`Found ${rows.length} valid rows to import.`)
+
+                // Fetch up to 5 questions to use for these rooms
+                const { data: qData } = await (supabase as any)
+                    .from('questions')
+                    .select('id')
+                    .limit(5)
+                const bankQuestions = qData || []
+
+                if (bankQuestions.length === 0) {
+                    alert("문제 은행에 등록된 문제가 없습니다. 먼저 문제를 등록해주세요!")
+                    setIsUploading(false)
+                    if (fileInputRef.current) fileInputRef.current.value = ""
+                    return
+                }
+
                 let successCount = 0
 
                 for (const row of rows) {
@@ -95,7 +109,7 @@ export default function AdminRoomGroup() {
                     }
 
                     // Insert room (we store the friendly room name in 'code')
-                    const { error: roomError } = await (supabase as any).from('rooms').insert({
+                    const { data: roomData, error: roomError } = await (supabase as any).from('rooms').insert({
                         group_id: groupId,
                         code: roomCodeName,
                         player1_id: p1Id,
@@ -103,10 +117,22 @@ export default function AdminRoomGroup() {
                         player1_invite_code: p1Code,
                         player2_invite_code: p2Code,
                         status: 'pending'
-                    })
+                    }).select().single()
 
-                    if (!roomError) successCount++
-                    else logger.error("Room insert error:", roomError)
+                    if (roomError || !roomData) {
+                        logger.error("Room insert error:", roomError)
+                        continue
+                    }
+
+                    // Map questions to room
+                    const roomQuestions = bankQuestions.map((q: any) => ({
+                        room_id: roomData.id,
+                        question_id: q.id
+                    }))
+
+                    await (supabase as any).from('room_questions').insert(roomQuestions)
+
+                    successCount++
                 }
 
                 alert(`${successCount}개의 세션이 성공적으로 생성되었습니다.`)

@@ -3,6 +3,7 @@ import AdminLayout from "./pages/admin/AdminLayout"
 import AdminDashboard from "./pages/admin/AdminDashboard"
 import AdminRoomGroup from "./pages/admin/AdminRoomGroup"
 import AdminRecap from "./pages/admin/AdminRecap"
+import AdminBank from "./pages/admin/AdminBank"
 import Home from "./pages/Home"
 import RoomWrapper from "./pages/room/RoomWrapper"
 
@@ -15,7 +16,7 @@ export default function App() {
                     <Route index element={<AdminDashboard />} />
                     <Route path="groups/:groupId" element={<AdminRoomGroup />} />
                     <Route path="recap/:roomId" element={<AdminRecap />} />
-                    <Route path="questions" element={<div className="p-8">문제 은행 개발중...</div>} />
+                    <Route path="questions" element={<AdminBank />} />
                 </Route>
 
                 {/* Public / Player Routes */}

@@ -8,7 +8,7 @@ import { useRoomStore } from "@/store/roomStore"
 
 export default function MainGame() {
     const {
-        room, isPlayer1, playerId,
+        room, isPlayer1, playerId, questions,
         strokes, addStroke, clearStrokes,
         isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn
     } = useRoomStore()
@@ -21,8 +21,10 @@ export default function MainGame() {
 
     const [timeLeft, setTimeLeft] = useState(room?.turn_state ? (turnState.timeLeft || 60) : 60)
 
-    // Current question index from DB
-    const currentQuestion = (room?.current_question_index || 0) + 1
+    // Current question
+    const currentQuestionIndex = room?.current_question_index || 0
+    const currentQuestionNum = currentQuestionIndex + 1
+    const currentQuestionObj = questions[currentQuestionIndex]
     const totalQuestions = 5 // From DB or standard limit
 
     // Canvas State local to the user
@@ -58,7 +60,7 @@ export default function MainGame() {
                             ROOM {room?.code}
                         </span>
                         <span className="text-sm font-semibold tracking-tight text-primary">
-                            문제 {currentQuestion} / {totalQuestions}
+                            문제 {currentQuestionNum} / {totalQuestions}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -73,11 +75,17 @@ export default function MainGame() {
                     <p className="text-sm font-medium text-muted-foreground absolute top-4 left-4">Question</p>
                     <div className="w-full h-full max-h-[300px] border-2 border-dashed border-muted-foreground/30 rounded-xl flex items-center justify-center text-muted-foreground bg-muted/10 relative overflow-hidden group">
                         {/* Real app: questions table query for image_url */}
-                        <img
-                            src="https://images.unsplash.com/photo-1596495577886-d920f1fb7238?w=800&q=80"
-                            alt="Question"
-                            className="object-contain w-full h-full"
-                        />
+                        {currentQuestionObj?.image_url ? (
+                            <img
+                                src={currentQuestionObj.image_url}
+                                alt="Question"
+                                className="object-contain w-full h-full"
+                            />
+                        ) : (
+                            <div className="flex flex-col items-center gap-2">
+                                <span className="text-sm">문제를 불러오는 중...</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 

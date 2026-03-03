@@ -13,6 +13,7 @@ interface RoomState {
     isPlayer1: boolean
     isConnected: boolean
     error: string | null
+    questions: any[]
 
     // Gameplay State
     partnerReady: boolean
@@ -58,6 +59,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         strokes: [],
         answerText: "",
         isAnswering: false,
+        questions: [],
 
         joinRoom: async (code: string) => {
             logger.info('Attempting to join room with invite code:', code)
@@ -83,7 +85,15 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     throw new Error('이 자리에 할당된 참가자 정보가 없습니다.')
                 }
 
-                set({ room, roomId: room.id, playerId: assignedPlayerId, isPlayer1, isConnected: true })
+                // Fetch questions mapped to this room
+                const { data: qData } = await (supabase as any)
+                    .from('room_questions')
+                    .select('*, questions(*)')
+                    .eq('room_id', room.id)
+
+                const questions = qData?.map((q: any) => q.questions).filter(Boolean) || []
+
+                set({ room, roomId: room.id, playerId: assignedPlayerId, isPlayer1, isConnected: true, questions })
 
                 // 1. Subscribe to DB changes for this room
                 channel = supabase.channel(`room:${room.id}`)
