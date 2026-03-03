@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "react-router-dom"
-import { Users, PlayCircle, CheckCircle, Clock } from "lucide-react"
+import { Users, PlayCircle, CheckCircle, Clock, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useEffect, useState } from "react"
@@ -43,6 +43,19 @@ export default function AdminDashboard() {
         fetchGroups()
     }, [])
 
+    const handleDeleteGroup = async (e: React.MouseEvent, id: string) => {
+        e.preventDefault() // prevent navigating to link
+        if (!confirm("이 세션을 정말 삭제하시겠습니까? 소속된 모든 방(Room)과 로그 기록이 삭제됩니다.")) return
+
+        try {
+            await (supabase as any).from('room_groups').delete().eq('id', id)
+            setGroups(prev => prev.filter(g => g.id !== id))
+        } catch (error) {
+            console.error(error)
+            alert("삭제에 실패했습니다.")
+        }
+    }
+
     const handleCreateGroup = async () => {
         const name = window.prompt('새로운 세션(그룹) 이름을 입력하세요. (예: 1차 실습)')
         if (!name || !name.trim()) return
@@ -75,7 +88,15 @@ export default function AdminDashboard() {
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {groups.map((group) => (
                     <Link key={group.id} to={`/admin/groups/${group.id}`}>
-                        <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+                        <Card className="hover:border-primary/50 transition-colors cursor-pointer relative group">
+                            <Button
+                                variant="destructive"
+                                size="icon"
+                                className="absolute top-4 right-4 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                onClick={(e) => handleDeleteGroup(e, group.id)}
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </Button>
                             <CardHeader className="pb-2">
                                 <CardTitle>{group.name}</CardTitle>
                                 <CardDescription>총 {group.total}팀 참여</CardDescription>

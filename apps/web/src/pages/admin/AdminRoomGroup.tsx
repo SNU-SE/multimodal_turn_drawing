@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ArrowLeft, Download, Upload, Loader2 } from "lucide-react"
+import { ArrowLeft, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
 import type { Database } from "@turn-based-drawing/supabase"
 import { logger } from "@/lib/logger"
@@ -15,22 +16,36 @@ export default function AdminRoomGroup() {
     const { groupId } = useParams()
     const [rooms, setRooms] = useState<RoomRow[]>([])
     const [groupName, setGroupName] = useState("...")
+    const [groupQuestionIds, setGroupQuestionIds] = useState<string[]>([])
     const [isUploading, setIsUploading] = useState(false)
     const fileInputRef = useRef<HTMLInputElement>(null)
+
+    // Question Selection State
+    const [isSelectModalOpen, setIsSelectModalOpen] = useState(false)
+    const [bankQuestions, setBankQuestions] = useState<any[]>([])
+    const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([])
+    const [isSavingQuestions, setIsSavingQuestions] = useState(false)
 
     const fetchGroupData = async () => {
         if (!groupId) return
 
         logger.info(`Admin fetching rooms for group: ${groupId}`)
-        // Fetch group name
+        // Fetch group info (including newly added question_ids)
         const { data: groupData } = await (supabase as any)
             .from('room_groups')
-            .select('name')
+            .select('name, question_ids')
             .eq('id', groupId)
             .single()
 
         if (groupData) {
             setGroupName(groupData.name)
+            setGroupQuestionIds(groupData.question_ids || [])
+
+            // If no questions are assigned to this group, open the modal forcefully
+            if (!groupData.question_ids || groupData.question_ids.length !== 5) {
+                setIsSelectModalOpen(true)
+                fetchBankQuestions()
+            }
         }
 
         // Fetch rooms
@@ -44,6 +59,37 @@ export default function AdminRoomGroup() {
             logger.info(`Admin fetched ${data.length} rooms successfully.`)
             setRooms(data as RoomRow[])
         }
+    }
+
+    const fetchBankQuestions = async () => {
+        const { data } = await (supabase as any).from('questions').select('id, title, question_type, image_url, correct_answer').order('created_at', { ascending: false })
+        if (data) setBankQuestions(data)
+    }
+
+    const handleSaveQuestions = async () => {
+        if (selectedQuestionIds.length !== 5) {
+            alert(`정확히 5개의 문제를 선택해야 합니다. 현재 ${selectedQuestionIds.length}개 선택됨.`)
+            return
+        }
+
+        setIsSavingQuestions(true)
+        try {
+            await (supabase as any).from('room_groups').update({ question_ids: selectedQuestionIds }).eq('id', groupId)
+            setGroupQuestionIds(selectedQuestionIds)
+            setIsSelectModalOpen(false)
+            alert("출제 문제가 성공적으로 저장되었습니다. 이제 엑셀로 반을 생성할 수 있습니다.")
+        } catch (error) {
+            console.error(error)
+            alert("저장 중 오류가 발생했습니다.")
+        } finally {
+            setIsSavingQuestions(false)
+        }
+    }
+
+    const toggleQuestionSelection = (id: string) => {
+        setSelectedQuestionIds(prev =>
+            prev.includes(id) ? prev.filter(q => q !== id) : [...prev, id]
+        )
     }
 
     useEffect(() => {
@@ -71,17 +117,13 @@ export default function AdminRoomGroup() {
 
                 logger.info(`Found ${rows.length} valid rows to import.`)
 
-                // Fetch up to 5 questions to use for these rooms
-                const { data: qData } = await (supabase as any)
-                    .from('questions')
-                    .select('id')
-                    .limit(5)
-                const bankQuestions = qData || []
-
-                if (bankQuestions.length === 0) {
-                    alert("문제 은행에 등록된 문제가 없습니다. 먼저 문제를 등록해주세요!")
+                // Ensure questions are assigned to the group first
+                if (!groupQuestionIds || groupQuestionIds.length !== 5) {
+                    alert("이 그룹에 출제할 문제 5개가 확정되지 않았습니다. 출제 문제를 먼저 선택해주세요.")
                     setIsUploading(false)
                     if (fileInputRef.current) fileInputRef.current.value = ""
+                    setIsSelectModalOpen(true)
+                    fetchBankQuestions()
                     return
                 }
 
@@ -124,10 +166,10 @@ export default function AdminRoomGroup() {
                         continue
                     }
 
-                    // Map questions to room
-                    const roomQuestions = bankQuestions.map((q: any) => ({
+                    // Map the group's predefined questions to the newly created room
+                    const roomQuestions = groupQuestionIds.map((qId: string) => ({
                         room_id: roomData.id,
-                        question_id: q.id
+                        question_id: qId
                     }))
 
                     await (supabase as any).from('room_questions').insert(roomQuestions)
@@ -146,6 +188,17 @@ export default function AdminRoomGroup() {
             }
         }
         reader.readAsBinaryString(file)
+    }
+
+    const deleteRoom = async (roomId: string) => {
+        if (!confirm("이 방을 정말 삭제하시겠습니까? 방에 소속된 학생들의 정보도 모두 삭제됩니다.")) return
+
+        try {
+            await (supabase as any).from('rooms').delete().eq('id', roomId)
+            setRooms(prev => prev.filter(r => r.id !== roomId))
+        } catch (e) {
+            console.error("Failed to delete room", e)
+        }
     }
 
     return (
@@ -185,12 +238,25 @@ export default function AdminRoomGroup() {
                     />
                     <Button
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
+                        disabled={isUploading || groupQuestionIds.length !== 5}
                         className="bg-primary hover:bg-primary/90 gap-2"
+                        title={groupQuestionIds.length !== 5 ? '먼저 그룹에서 출제할 문제 5개를 확정해주세요.' : ''}
                     >
                         {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                         방 추가(엑셀 템플릿)
                     </Button>
+                    <Button
+                        onClick={() => {
+                            setSelectedQuestionIds(groupQuestionIds)
+                            setIsSelectModalOpen(true)
+                            fetchBankQuestions()
+                        }}
+                        variant="secondary"
+                        className="gap-2"
+                    >
+                        <Settings className="w-4 h-4" />
+                        출제할 문제 변경 ({groupQuestionIds.length}/5)
+                    </Button
                 </div>
             </div>
 
@@ -236,11 +302,16 @@ export default function AdminRoomGroup() {
                                     </span>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <Link to={`/admin/recap/${room.id}`}>
-                                        <Button variant="ghost" size="sm">
-                                            {room.status === "completed" ? "리캡 보기" : "실시간 관전"}
+                                    <div className="flex justify-end gap-2">
+                                        <Link to={`/admin/recap/${room.id}`}>
+                                            <Button variant="ghost" size="sm">
+                                                {room.status === "completed" ? "리캡 보기" : "실시간 관전"}
+                                            </Button>
+                                        </Link>
+                                        <Button variant="ghost" size="sm" onClick={() => deleteRoom(room.id)} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
+                                            <Trash2 className="w-4 h-4" />
                                         </Button>
-                                    </Link>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}
@@ -248,6 +319,80 @@ export default function AdminRoomGroup() {
                 </Table>
             </div>
 
+            {/* Question Selection Modal */}
+            <Dialog open={isSelectModalOpen} onOpenChange={(open) => {
+                // Prevent closing if we haven't selected 5 questions yet, unless there are no questions in bank at all
+                if (!open && groupQuestionIds.length !== 5 && bankQuestions.length >= 5) {
+                    alert("이 그룹에 출제할 문제 5개를 반드시 선택해야 액셀 업로드가 가능합니다.")
+                    return
+                }
+                setIsSelectModalOpen(open)
+            }}>
+                <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>이 그룹에서 출제할 문제 선택</DialogTitle>
+                        <DialogDescription>
+                            학생들에게 출제할 5개의 문제를 문제 은행에서 선택해주세요. 이 그룹으로 엑셀을 업로드해 생성하는 모든 방은 이 5개의 문제를 똑같이 풀게 됩니다.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="sticky top-0 bg-background py-3 mb-2 border-b flex justify-between items-center z-10">
+                        <span className="font-bold">
+                            선택된 문제: <span className={selectedQuestionIds.length === 5 ? 'text-green-600' : 'text-destructive'}>{selectedQuestionIds.length}</span> / 5
+                        </span>
+                        {bankQuestions.length < 5 && (
+                            <Link to="/admin/questions">
+                                <Button variant="outline" size="sm" className="gap-2">
+                                    <PlusCircle className="w-4 h-4" />
+                                    문제 은행에 문제 만들러 가기
+                                </Button>
+                            </Link>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 py-4">
+                        {bankQuestions.length === 0 && (
+                            <div className="col-span-full py-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
+                                등록된 문제가 없습니다. 좌측 "문제 은행" 메뉴에서 먼저 이미지를 등록해주세요.
+                            </div>
+                        )}
+                        {bankQuestions.map((q) => {
+                            const isSelected = selectedQuestionIds.includes(q.id)
+                            return (
+                                <div
+                                    key={q.id}
+                                    className={`relative border rounded-lg overflow-hidden cursor-pointer transition-all ${isSelected ? 'ring-2 ring-primary border-primary shadow-sm' : 'hover:border-primary/50'}`}
+                                    onClick={() => toggleQuestionSelection(q.id)}
+                                >
+                                    <div className="aspect-video w-full bg-muted flex items-center justify-center">
+                                        <img src={q.image_url} alt="Question" className="object-cover w-full h-full opacity-90" />
+                                    </div>
+                                    <div className="p-3 bg-card border-t flex justify-between items-center">
+                                        <div className="truncate pr-2">
+                                            <p className="font-semibold text-sm truncate">{q.title || q.correct_answer}</p>
+                                            <p className="text-xs text-muted-foreground">{q.question_type === 'essay' ? '주관식' : '객관식'}</p>
+                                        </div>
+                                        <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/30'}`}>
+                                            {isSelected && <Check className="w-3 h-3" />}
+                                        </div>
+                                    </div>
+                                </div>
+                            )
+                        })}
+                    </div>
+
+                    <DialogFooter className="sticky bottom-0 bg-background pt-2 border-t">
+                        <Button
+                            onClick={handleSaveQuestions}
+                            disabled={selectedQuestionIds.length !== 5 || isSavingQuestions}
+                            className="bg-primary flex-1"
+                        >
+                            {isSavingQuestions && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            5문제 확정 및 엑셀 활성화
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

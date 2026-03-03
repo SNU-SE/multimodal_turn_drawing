@@ -15,8 +15,10 @@ export default function AdminBank() {
     const [questions, setQuestions] = useState<QuestionRow[]>([])
     const [isUploading, setIsUploading] = useState(false)
     const fileRef = useRef<HTMLInputElement>(null)
+    const [title, setTitle] = useState("")
     const [answer, setAnswer] = useState("")
     const [qType, setQType] = useState<"multiple_choice" | "essay">("essay")
+    const [options, setOptions] = useState<string[]>(["", "", "", ""])
 
     const fetchQuestions = async () => {
         logger.info("Fetching questions...")
@@ -29,9 +31,24 @@ export default function AdminBank() {
     }, [])
 
     const handleUploadClick = () => {
-        if (!answer.trim()) {
+        if (!title.trim()) {
+            alert("문제 제목(이름)을 먼저 입력해주세요.")
+            return
+        }
+        if (qType === 'essay' && !answer.trim()) {
             alert("정답을 먼저 입력해주세요.")
             return
+        }
+        if (qType === 'multiple_choice') {
+            const hasEmptyOption = options.some(opt => !opt.trim())
+            if (hasEmptyOption) {
+                alert("객관식 보기를 모두 입력해주세요.")
+                return
+            }
+            if (!answer.trim()) {
+                alert("객관식 정답(보기 중 하나)을 선택해주세요.")
+                return
+            }
         }
         fileRef.current?.click()
     }
@@ -60,16 +77,20 @@ export default function AdminBank() {
 
             // 2. Insert into DB
             const { error: dbError } = await (supabase as any).from('questions').insert({
+                title: title.trim(),
                 image_url: publicUrl,
                 correct_answer: answer.trim(),
                 question_type: qType,
+                options: qType === 'multiple_choice' ? options : null,
                 default_time_limit: 60
             })
 
             if (dbError) throw dbError
 
             alert("문제가 성공적으로 등록되었습니다.")
+            setTitle("")
             setAnswer("")
+            setOptions(["", "", "", ""])
             fetchQuestions()
         } catch (err: any) {
             logger.error("Upload failed:", err)
@@ -110,35 +131,84 @@ export default function AdminBank() {
 
             <Card className="bg-muted/30">
                 <CardContent className="pt-6">
-                    <div className="flex flex-col md:flex-row gap-4 items-end">
-                        <div className="space-y-2 flex-grow">
-                            <Label>문제 유형</Label>
-                            <Select value={qType} onValueChange={(val: any) => setQType(val)}>
-                                <SelectTrigger>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="essay">주관식 (Essay)</SelectItem>
-                                    <SelectItem value="multiple_choice">객관식 (Multiple Choice)</SelectItem>
-                                </SelectContent>
-                            </Select>
+                    <div className="flex flex-col gap-4">
+                        <div className="flex flex-col md:flex-row gap-4 items-end">
+                            <div className="space-y-2 flex-grow">
+                                <Label>문제 제목 (식별용)</Label>
+                                <Input
+                                    placeholder="어떤 문제인지 적어주세요 (예: 과일 이름 맞추기 1번)"
+                                    value={title}
+                                    onChange={(e) => setTitle(e.target.value)}
+                                />
+                            </div>
+                            <div className="space-y-2 w-full md:w-1/4">
+                                <Label>문제 유형</Label>
+                                <Select value={qType} onValueChange={(val: any) => {
+                                    setQType(val)
+                                    setAnswer("") // reset answer when type changes
+                                }}>
+                                    <SelectTrigger>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="essay">주관식 (Essay)</SelectItem>
+                                        <SelectItem value="multiple_choice">객관식 (Multiple Choice)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
-                        <div className="space-y-2 flex-grow">
-                            <Label>정답</Label>
-                            <Input
-                                placeholder="정답을 입력하세요 (예: 사과)"
-                                value={answer}
-                                onChange={(e) => setAnswer(e.target.value)}
-                            />
+
+                        {/* 동적 폼 영역 */}
+                        <div className="p-4 bg-background rounded-md border flex flex-col md:flex-row gap-4 items-end">
+                            {qType === 'essay' ? (
+                                <div className="space-y-2 flex-grow">
+                                    <Label>주관식 정답</Label>
+                                    <Input
+                                        placeholder="정답을 입력하세요 (예: 사과)"
+                                        value={answer}
+                                        onChange={(e) => setAnswer(e.target.value)}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="space-y-4 w-full">
+                                    <Label>객관식 보기 (라디오 버튼으로 정답 선택)</Label>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {[0, 1, 2, 3].map((idx) => (
+                                            <div key={idx} className="flex items-center space-x-2">
+                                                <input
+                                                    type="radio"
+                                                    name="correct_answer"
+                                                    value={String(idx + 1)}
+                                                    checked={answer === String(idx + 1)}
+                                                    onChange={(e) => setAnswer(e.target.value)}
+                                                    className="w-4 h-4 text-primary"
+                                                />
+                                                <span className="font-bold text-sm w-4">{idx + 1}.</span>
+                                                <Input
+                                                    placeholder={`보기 ${idx + 1} 내용`}
+                                                    value={options[idx]}
+                                                    onChange={(e) => {
+                                                        const newOpts = [...options]
+                                                        newOpts[idx] = e.target.value
+                                                        setOptions(newOpts)
+                                                    }}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            <Button
+                                className="bg-primary gap-2 h-10 px-8 shrink-0"
+                                onClick={handleUploadClick}
+                                disabled={isUploading}
+                            >
+                                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                                업로드 및 등록
+                            </Button>
                         </div>
-                        <Button
-                            className="bg-primary gap-2 w-full md:w-auto"
-                            onClick={handleUploadClick}
-                            disabled={isUploading}
-                        >
-                            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                            이미지 업로드 및 등록
-                        </Button>
+
                         <input
                             type="file"
                             accept="image/*"
@@ -161,19 +231,33 @@ export default function AdminBank() {
                             )}
                         </div>
                         <CardContent className="p-3">
-                            <div className="flex justify-between items-center">
-                                <div>
-                                    <p className="font-semibold text-lg">{q.correct_answer}</p>
-                                    <p className="text-xs text-muted-foreground">{q.question_type === 'essay' ? '주관식' : '객관식'}</p>
+                            <div className="flex flex-col gap-2">
+                                <div className="flex justify-between items-start">
+                                    <div>
+                                        <p className="font-semibold">{q.title || '제목 없음'}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {q.question_type === 'essay' ? '주관식' : '객관식'} | 정답: {q.question_type === 'multiple_choice' ? `${q.correct_answer}번` : q.correct_answer}
+                                        </p>
+                                    </div>
+                                    <Button
+                                        variant="destructive"
+                                        size="icon"
+                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        onClick={() => handleDelete(q.id, q.image_url)}
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </Button>
                                 </div>
-                                <Button
-                                    variant="destructive"
-                                    size="icon"
-                                    className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => handleDelete(q.id, q.image_url)}
-                                >
-                                    <Trash2 className="w-4 h-4" />
-                                </Button>
+
+                                {q.question_type === 'multiple_choice' && q.options && (
+                                    <div className="grid grid-cols-2 gap-1 mt-2 text-xs bg-muted p-2 rounded">
+                                        {(q.options as string[]).map((opt, i) => (
+                                            <div key={i} className={String(i + 1) === q.correct_answer ? "font-bold text-primary" : "text-muted-foreground"}>
+                                                {i + 1}. {opt}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>

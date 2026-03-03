@@ -30,16 +30,19 @@ export interface Database {
                 Row: {
                     id: string
                     name: string
+                    question_ids: string[]
                     created_at: string
                 }
                 Insert: {
                     id?: string
                     name: string
+                    question_ids?: string[]
                     created_at?: string
                 }
                 Update: {
                     id?: string
                     name?: string
+                    question_ids?: string[]
                     created_at?: string
                 }
             }
@@ -87,24 +90,30 @@ export interface Database {
             questions: {
                 Row: {
                     id: string
+                    title: string | null
                     image_url: string
                     question_type: 'multiple_choice' | 'essay'
+                    options: Json | null
                     correct_answer: string | null
                     default_time_limit: number
                     created_at: string
                 }
                 Insert: {
                     id?: string
+                    title?: string | null
                     image_url: string
                     question_type: 'multiple_choice' | 'essay'
+                    options?: Json | null
                     correct_answer?: string | null
                     default_time_limit?: number
                     created_at?: string
                 }
                 Update: {
                     id?: string
+                    title?: string | null
                     image_url?: string
                     question_type?: 'multiple_choice' | 'essay'
+                    options?: Json | null
                     correct_answer?: string | null
                     default_time_limit?: number
                     created_at?: string
