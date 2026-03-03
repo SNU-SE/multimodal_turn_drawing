@@ -22,6 +22,7 @@ interface RoomState {
     strokes: any[]
     answerText: string
     isAnswering: boolean
+    lastAnswerResult: { answer: string; isCorrect: boolean; questionIndex: number } | null
 
     // Actions
     joinRoom: (code: string) => Promise<void>
@@ -32,6 +33,7 @@ interface RoomState {
     // Canvas Actions
     addStroke: (stroke: any) => void
     clearStrokes: () => void
+    clearAnswerResult: () => void
 
     // Turn Actions
     startAnswer: () => void
@@ -63,6 +65,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         strokes: [],
         answerText: "",
         isAnswering: false,
+        lastAnswerResult: null,
         questions: [],
 
         joinRoom: async (code: string) => {
@@ -133,6 +136,14 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     }
                 })
 
+                // Listen for answer results (both submitter and partner get feedback)
+                channel.on('broadcast', { event: 'answer_result' }, (payload) => {
+                    logger.info('Answer result received:', payload.payload)
+                    if (payload.payload) {
+                        set({ lastAnswerResult: payload.payload })
+                    }
+                })
+
                 // Broadcast for room state updates (fallback for missing postgres realtime)
                 channel.on('broadcast', { event: 'room_update' }, (payload) => {
                     logger.info(`Partner updated room state:`, payload.payload)
@@ -163,7 +174,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         leaveRoom: () => {
             if (channel) supabase.removeChannel(channel)
-            set({ room: null, roomId: null, isConnected: false, strokes: [], isReady: false, partnerReady: false })
+            set({ room: null, roomId: null, isConnected: false, strokes: [], isReady: false, partnerReady: false, lastAnswerResult: null })
             get().cleanup()
         },
 
@@ -227,6 +238,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     payload: {}
                 } as any).then()
             }
+        },
+
+        clearAnswerResult: () => {
+            set({ lastAnswerResult: null })
         },
 
         startAnswer: () => {

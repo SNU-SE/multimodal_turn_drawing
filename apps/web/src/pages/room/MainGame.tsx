@@ -10,7 +10,8 @@ export default function MainGame() {
     const {
         room, isPlayer1, playerId, questions,
         strokes, addStroke, clearStrokes,
-        isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn
+        isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn,
+        lastAnswerResult, clearAnswerResult
     } = useRoomStore()
 
     // Turn State
@@ -20,8 +21,13 @@ export default function MainGame() {
 
     const [timeLeft, setTimeLeft] = useState(room?.turn_state ? (turnState.timeLeft || 60) : 60)
 
-    // Answer feedback state
-    const [answerFeedback, setAnswerFeedback] = useState<{ answer: string; isCorrect: boolean } | null>(null)
+    // Answer feedback — driven by store (so BOTH players see it)
+    useEffect(() => {
+        if (lastAnswerResult) {
+            const t = setTimeout(() => clearAnswerResult(), 3000)
+            return () => clearTimeout(t)
+        }
+    }, [lastAnswerResult, clearAnswerResult])
 
     // Current question
     const currentQuestionIndex = room?.current_question_index || 0
@@ -49,15 +55,6 @@ export default function MainGame() {
             setTimeLeft(turnState.timeLeft)
         }
     }, [turnState?.currentPlayerId, currentQuestionIndex, turnState?.timeLeft])
-
-    // Listen for answer_result broadcast (via store channel — we handle it via room update)
-    // Clear feedback after 3s
-    useEffect(() => {
-        if (answerFeedback) {
-            const t = setTimeout(() => setAnswerFeedback(null), 3000)
-            return () => clearTimeout(t)
-        }
-    }, [answerFeedback])
 
     // ── Game Completed Screen ─────────────────────────────────────────────────
     if (room?.status === 'completed') {
@@ -98,10 +95,10 @@ export default function MainGame() {
             </div>
 
             {/* Answer Feedback Toast */}
-            {answerFeedback && (
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all ${answerFeedback.isCorrect ? 'bg-green-500' : 'bg-destructive'}`}>
-                    {answerFeedback.isCorrect
-                        ? <><CheckCircle2 className="w-5 h-5" /> 정답! 🎉</>
+            {lastAnswerResult && (
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all ${lastAnswerResult.isCorrect ? 'bg-green-500' : 'bg-destructive'}`}>
+                    {lastAnswerResult.isCorrect
+                        ? <><CheckCircle2 className="w-5 h-5" /> 정답! 🎉 &quot;{lastAnswerResult.answer}&quot;</>
                         : <><XCircle className="w-5 h-5" /> 오답. 다음 문제로...</>
                     }
                 </div>
