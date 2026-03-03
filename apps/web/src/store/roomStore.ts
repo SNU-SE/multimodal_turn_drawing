@@ -92,13 +92,38 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     throw new Error('이 자리에 할당된 참가자 정보가 없습니다.')
                 }
 
-                // Fetch questions mapped to this room
-                const { data: qData } = await (supabase as any)
+                // Fetch questions mapped to this room (ordered to ensure consistent ordering)
+                const { data: qData, error: qError } = await (supabase as any)
                     .from('room_questions')
                     .select('*, questions(*)')
                     .eq('room_id', room.id)
+                    .order('created_at', { ascending: true })
 
-                const questions = qData?.map((q: any) => q.questions).filter(Boolean) || []
+                if (qError) {
+                    logger.error('Failed to fetch room_questions:', qError)
+                }
+
+                let questions = qData?.map((q: any) => q.questions).filter(Boolean) || []
+                logger.info(`Fetched ${questions.length} questions for room ${room.id}`)
+
+                // Fallback: if no questions found via room_questions, try fetching from group's question_ids
+                if (questions.length === 0 && room.group_id) {
+                    logger.warn('No room_questions found, trying group fallback...')
+                    const { data: groupData } = await (supabase as any)
+                        .from('room_groups')
+                        .select('question_ids')
+                        .eq('id', room.group_id)
+                        .single()
+
+                    if (groupData?.question_ids?.length > 0) {
+                        const { data: fallbackQData } = await (supabase as any)
+                            .from('questions')
+                            .select('*')
+                            .in('id', groupData.question_ids)
+                        questions = fallbackQData || []
+                        logger.info(`Fallback: fetched ${questions.length} questions from group`)
+                    }
+                }
 
                 set({ room, roomId: room.id, playerId: assignedPlayerId, isPlayer1, isConnected: true, questions })
 
