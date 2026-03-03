@@ -16,7 +16,18 @@ export default function Home() {
     }
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="relative min-h-screen flex items-center justify-center bg-background p-4">
+
+            {/* Mobile Portrait Block */}
+            <div className="hidden max-md:portrait:flex absolute inset-0 bg-background z-50 flex-col items-center justify-center p-8 text-center gap-4">
+                <div className="text-5xl">📱</div>
+                <h2 className="text-2xl font-bold">세로 모드 접속 불가</h2>
+                <p className="text-muted-foreground">
+                    이 플랫폼은 <strong>태블릿 또는 PC 가로 모드</strong> 전용입니다.<br />
+                    기기를 가로로 회전하거나 PC에서 접속해주세요.
+                </p>
+            </div>
+
             <Card className="w-full max-w-md">
                 <CardHeader className="text-center">
                     <CardTitle className="text-2xl font-bold">협력 드로잉 플랫폼</CardTitle>
@@ -46,8 +57,6 @@ export default function Home() {
                     </form>
                 </CardContent>
             </Card>
-
-            {/* Device Check Override Note: Only Landscape Tablet/PC allowed in real usage */}
         </div>
     )
 }

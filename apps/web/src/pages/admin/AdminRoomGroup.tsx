@@ -181,6 +181,89 @@ export default function AdminRoomGroup() {
         }
     }
 
+    const handleDownloadResults = async () => {
+        if (rooms.length === 0) {
+            alert("다운로드할 세션이 없습니다.")
+            return
+        }
+
+        logger.info("Downloading results for group:", groupId)
+
+        try {
+            // 1. Fetch all room_questions for rooms in this group
+            const roomIds = rooms.map(r => r.id)
+            const { data: rqData, error: rqError } = await (supabase as any)
+                .from('room_questions')
+                .select('*, questions(title, correct_answer, question_type)')
+                .in('room_id', roomIds)
+
+            if (rqError) throw rqError
+
+            // 2. Fetch user aliases
+            const allUserIds = rooms.flatMap(r => [r.player1_id, r.player2_id]).filter(Boolean)
+            const { data: usersData } = await (supabase as any)
+                .from('users')
+                .select('id, admin_alias')
+                .in('id', allUserIds)
+
+            const userMap: Record<string, string> = {}
+            if (usersData) {
+                usersData.forEach((u: any) => { userMap[u.id] = u.admin_alias })
+            }
+
+            // 3. Build rows for Excel
+            const excelRows: any[] = []
+
+            for (const room of rooms) {
+                const roomRQs = (rqData || []).filter((rq: any) => rq.room_id === room.id)
+                const p1Alias = userMap[room.player1_id || ''] || 'P1 미확인'
+                const p2Alias = userMap[room.player2_id || ''] || 'P2 미확인'
+
+                for (const rq of roomRQs) {
+                    excelRows.push({
+                        '그룹명': groupName,
+                        '방 식별자': room.code || '-',
+                        '방 상태': room.status === 'completed' ? '완료' : room.status === 'playing' ? '진행중' : '대기중',
+                        'Player1 (P1)': p1Alias,
+                        'Player2 (P2)': p2Alias,
+                        '문제 제목': rq.questions?.title || '제목 없음',
+                        '문제 유형': rq.questions?.question_type === 'essay' ? '주관식' : '객관식',
+                        '정답': rq.questions?.correct_answer || '-',
+                        '제출 답안': rq.submitted_answer || '(미제출)',
+                        '자동 채점': rq.is_correct === true ? 'O 정답' : rq.is_correct === false ? 'X 오답' : '-',
+                    })
+                }
+
+                // If no questions linked, still include a row per room
+                if (roomRQs.length === 0) {
+                    excelRows.push({
+                        '그룹명': groupName,
+                        '방 식별자': room.code || '-',
+                        '방 상태': room.status === 'completed' ? '완료' : room.status === 'playing' ? '진행중' : '대기중',
+                        'Player1 (P1)': p1Alias,
+                        'Player2 (P2)': p2Alias,
+                        '문제 제목': '(문제 없음)',
+                        '문제 유형': '-',
+                        '정답': '-',
+                        '제출 답안': '-',
+                        '자동 채점': '-',
+                    })
+                }
+            }
+
+            // 4. Export with XLSX
+            const ws = XLSX.utils.json_to_sheet(excelRows)
+            const wb = XLSX.utils.book_new()
+            XLSX.utils.book_append_sheet(wb, ws, '결과')
+            const fileName = `${groupName}_결과_${new Date().toISOString().slice(0, 10)}.xlsx`
+            XLSX.writeFile(wb, fileName)
+            logger.info(`Downloaded results: ${fileName}`)
+        } catch (err: any) {
+            logger.error("Result download failed:", err)
+            alert("다운로드 중 오류가 발생했습니다: " + err.message)
+        }
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4 mb-2">
@@ -194,18 +277,26 @@ export default function AdminRoomGroup() {
             </div>
 
             <div className="flex justify-between items-center bg-card p-4 rounded-lg border">
-                <div className="flex gap-4">
+                <div className="flex gap-6">
                     <div className="text-sm">
                         <p className="text-muted-foreground mb-1">총 세션</p>
                         <p className="text-2xl font-bold">{rooms.length}</p>
                     </div>
-                    <div className="text-sm border-l pl-4">
+                    <div className="text-sm border-l pl-6">
+                        <p className="text-muted-foreground mb-1">대기중</p>
+                        <p className="text-2xl font-bold text-muted-foreground">{rooms.filter(r => r.status === 'pending').length}</p>
+                    </div>
+                    <div className="text-sm border-l pl-6">
                         <p className="text-muted-foreground mb-1">진행중</p>
                         <p className="text-2xl font-bold text-primary">{rooms.filter(r => r.status === 'playing').length}</p>
                     </div>
+                    <div className="text-sm border-l pl-6">
+                        <p className="text-muted-foreground mb-1">완료</p>
+                        <p className="text-2xl font-bold text-green-600">{rooms.filter(r => r.status === 'completed').length}</p>
+                    </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" className="gap-2">
+                    <Button variant="outline" className="gap-2" onClick={handleDownloadResults}>
                         <Download className="w-4 h-4" />
                         엑셀 결과 다운로드
                     </Button>
