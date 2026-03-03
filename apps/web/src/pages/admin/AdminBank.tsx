@@ -24,22 +24,8 @@ export default function AdminBank() {
         if (data) setQuestions(data as QuestionRow[])
     }
 
-    const checkAndCreateBucket = async () => {
-        try {
-            const { data } = await supabase.storage.getBucket('questions')
-            if (!data) {
-                await supabase.storage.createBucket('questions', {
-                    public: true,
-                })
-            }
-        } catch (e) {
-            logger.info("Bucket check failed... attempting create anyway.", e)
-            await supabase.storage.createBucket('questions', { public: true })
-        }
-    }
-
     useEffect(() => {
-        checkAndCreateBucket().then(fetchQuestions)
+        fetchQuestions()
     }, [])
 
     const handleUploadClick = () => {
