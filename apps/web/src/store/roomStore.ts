@@ -103,7 +103,48 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 set({ room, roomId: room.id, playerId: assignedPlayerId, isPlayer1, isConnected: true, questions })
 
                 // 1. Subscribe to DB changes for this room
-                channel = supabase.channel(`room:${room.id}`)
+                // IMPORTANT: enable Presence for reliable ready-state tracking
+                channel = supabase.channel(`room:${room.id}`, {
+                    config: { presence: { key: assignedPlayerId } }
+                })
+
+                // Presence sync — detect when BOTH players are ready
+                channel.on('presence', { event: 'sync' }, () => {
+                    const presenceState = channel!.presenceState<{ isReady: boolean }>()
+                    const presenceList = Object.values(presenceState).flat()
+                    logger.info('Presence sync:', presenceList)
+
+                    const readyCount = presenceList.filter((u: any) => u.isReady).length
+                    const totalCount = presenceList.length
+
+                    // Update partner ready indicator
+                    const myId = get().playerId
+                    const othersReady = presenceList
+                        .filter((u: any) => u.presence_ref !== undefined)
+                        .some((u: any) => u.isReady && u.playerId !== myId)
+                    set({ partnerReady: othersReady })
+
+                    // If BOTH players in the room are ready → P1 starts the game
+                    if (readyCount >= 2 && totalCount >= 2 && get().isPlayer1 && get().room?.status === 'pending') {
+                        logger.info('Presence: both players ready! Starting room...')
+                        const currentRoom = get().room!
+                        const currentQuestions = get().questions
+                        const initialTimeLeft = currentQuestions[0]?.default_time_limit || 60
+                        const payload = {
+                            status: 'playing' as const,
+                            turn_state: {
+                                currentPlayerId: currentRoom.player1_id,
+                                timeLeft: initialTimeLeft,
+                                isPaused: false
+                            }
+                        };
+                        (supabase as any).from('rooms').update(payload).eq('id', currentRoom.id).then(() => {
+                            const updatedRoom = { ...currentRoom, ...payload }
+                            channel!.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
+                            set({ room: updatedRoom })
+                        })
+                    }
+                })
 
                 // Broadcast for fast stroke syncing
                 channel.on('broadcast', { event: 'stroke' }, (payload) => {
@@ -128,9 +169,9 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     }
                 })
 
-                // Broadcast for readiness
+                // Broadcast for readiness (kept as fallback)
                 channel.on('broadcast', { event: 'ready' }, (payload) => {
-                    logger.info(`Partner readiness status changed:`, payload.payload?.isReady)
+                    logger.info(`Partner readiness broadcast:`, payload.payload?.isReady)
                     if (payload.payload) {
                         set({ partnerReady: payload.payload.isReady })
                     }
@@ -183,7 +224,11 @@ export const useRoomStore = create<RoomState>((set, get) => {
             logger.info(`Toggling local ready state to: ${isReady}`)
             set({ isReady })
 
+            // Use Presence for reliable state sharing
             if (channel) {
+                const { playerId } = get()
+                channel.track({ isReady, playerId })
+                // Also keep the broadcast as fallback for older clients
                 channel.send({
                     type: 'broadcast',
                     event: 'ready',
