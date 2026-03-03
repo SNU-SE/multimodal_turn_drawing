@@ -256,7 +256,7 @@ export default function AdminRoomGroup() {
                     >
                         <Settings className="w-4 h-4" />
                         출제할 문제 변경 ({groupQuestionIds.length}/5)
-                    </Button
+                    </Button>
                 </div>
             </div>
 
