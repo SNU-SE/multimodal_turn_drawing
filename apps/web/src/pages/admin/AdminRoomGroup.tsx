@@ -40,12 +40,6 @@ export default function AdminRoomGroup() {
         if (groupData) {
             setGroupName(groupData.name)
             setGroupQuestionIds(groupData.question_ids || [])
-
-            // If no questions are assigned to this group, open the modal forcefully
-            if (!groupData.question_ids || groupData.question_ids.length !== 5) {
-                setIsSelectModalOpen(true)
-                fetchBankQuestions()
-            }
         }
 
         // Fetch rooms
@@ -67,11 +61,6 @@ export default function AdminRoomGroup() {
     }
 
     const handleSaveQuestions = async () => {
-        if (selectedQuestionIds.length !== 5) {
-            alert(`정확히 5개의 문제를 선택해야 합니다. 현재 ${selectedQuestionIds.length}개 선택됨.`)
-            return
-        }
-
         setIsSavingQuestions(true)
         try {
             await (supabase as any).from('room_groups').update({ question_ids: selectedQuestionIds }).eq('id', groupId)
@@ -117,16 +106,7 @@ export default function AdminRoomGroup() {
 
                 logger.info(`Found ${rows.length} valid rows to import.`)
 
-                // Ensure questions are assigned to the group first
-                if (!groupQuestionIds || groupQuestionIds.length !== 5) {
-                    alert("이 그룹에 출제할 문제 5개가 확정되지 않았습니다. 출제 문제를 먼저 선택해주세요.")
-                    setIsUploading(false)
-                    if (fileInputRef.current) fileInputRef.current.value = ""
-                    setIsSelectModalOpen(true)
-                    fetchBankQuestions()
-                    return
-                }
-
+                // Group questions already exist in groupQuestionIds
                 let successCount = 0
 
                 for (const row of rows) {
@@ -238,9 +218,8 @@ export default function AdminRoomGroup() {
                     />
                     <Button
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading || groupQuestionIds.length !== 5}
+                        disabled={isUploading}
                         className="bg-primary hover:bg-primary/90 gap-2"
-                        title={groupQuestionIds.length !== 5 ? '먼저 그룹에서 출제할 문제 5개를 확정해주세요.' : ''}
                     >
                         {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                         방 추가(엑셀 템플릿)
@@ -255,7 +234,7 @@ export default function AdminRoomGroup() {
                         className="gap-2"
                     >
                         <Settings className="w-4 h-4" />
-                        출제할 문제 변경 ({groupQuestionIds.length}/5)
+                        출제할 문제 변경 ({groupQuestionIds.length}개)
                     </Button>
                 </div>
             </div>
@@ -285,7 +264,9 @@ export default function AdminRoomGroup() {
                                     {room.status === "playing" && <Badge className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">진행중</Badge>}
                                     {room.status === "pending" && <Badge variant="outline" className="text-muted-foreground">대기중</Badge>}
                                 </TableCell>
-                                <TableCell>{room.current_question_index + 1} / 5</TableCell>
+                                <TableCell>
+                                    {room.current_question_index + 1} / {groupQuestionIds.length > 0 ? groupQuestionIds.length : '-'}
+                                </TableCell>
                                 <TableCell>
                                     <div className="flex flex-col gap-1 text-sm">
                                         <span className="flex items-center gap-2">
@@ -320,25 +301,18 @@ export default function AdminRoomGroup() {
             </div>
 
             {/* Question Selection Modal */}
-            <Dialog open={isSelectModalOpen} onOpenChange={(open) => {
-                // Prevent closing if we haven't selected 5 questions yet, unless there are no questions in bank at all
-                if (!open && groupQuestionIds.length !== 5 && bankQuestions.length >= 5) {
-                    alert("이 그룹에 출제할 문제 5개를 반드시 선택해야 액셀 업로드가 가능합니다.")
-                    return
-                }
-                setIsSelectModalOpen(open)
-            }}>
+            <Dialog open={isSelectModalOpen} onOpenChange={setIsSelectModalOpen}>
                 <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>이 그룹에서 출제할 문제 선택</DialogTitle>
                         <DialogDescription>
-                            학생들에게 출제할 5개의 문제를 문제 은행에서 선택해주세요. 이 그룹으로 엑셀을 업로드해 생성하는 모든 방은 이 5개의 문제를 똑같이 풀게 됩니다.
+                            학생들에게 출제할 문제들을 문제 은행에서 선택해주세요. (선택하지 않거나, 원하는 개수만큼 자유롭게 선택 가능)
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="sticky top-0 bg-background py-3 mb-2 border-b flex justify-between items-center z-10">
                         <span className="font-bold">
-                            선택된 문제: <span className={selectedQuestionIds.length === 5 ? 'text-green-600' : 'text-destructive'}>{selectedQuestionIds.length}</span> / 5
+                            선택된 문제: <span className="text-primary">{selectedQuestionIds.length}</span>개
                         </span>
                         {bankQuestions.length < 5 && (
                             <Link to="/admin/questions">
@@ -384,11 +358,11 @@ export default function AdminRoomGroup() {
                     <DialogFooter className="sticky bottom-0 bg-background pt-2 border-t">
                         <Button
                             onClick={handleSaveQuestions}
-                            disabled={selectedQuestionIds.length !== 5 || isSavingQuestions}
+                            disabled={isSavingQuestions}
                             className="bg-primary flex-1"
                         >
                             {isSavingQuestions && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            5문제 확정 및 엑셀 활성화
+                            선택 문제 확정 저장
                         </Button>
                     </DialogFooter>
                 </DialogContent>

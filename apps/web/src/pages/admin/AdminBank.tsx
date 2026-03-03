@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, Trash2, Loader2, Image as ImageIcon } from "lucide-react"
+import { Upload, Trash2, Loader2, Image as ImageIcon, Check } from "lucide-react"
 import type { Database } from "@turn-based-drawing/supabase"
 import { logger } from "@/lib/logger"
 
@@ -19,6 +19,7 @@ export default function AdminBank() {
     const [answer, setAnswer] = useState("")
     const [qType, setQType] = useState<"multiple_choice" | "essay">("essay")
     const [options, setOptions] = useState<string[]>(["", "", "", ""])
+    const [mcAnswers, setMcAnswers] = useState<string[]>([])
 
     const fetchQuestions = async () => {
         logger.info("Fetching questions...")
@@ -45,8 +46,8 @@ export default function AdminBank() {
                 alert("객관식 보기를 모두 입력해주세요.")
                 return
             }
-            if (!answer.trim()) {
-                alert("객관식 정답(보기 중 하나)을 선택해주세요.")
+            if (mcAnswers.length === 0) {
+                alert("객관식 정답(보기 중 최소 하나 이상)을 선택해주세요.")
                 return
             }
         }
@@ -79,7 +80,7 @@ export default function AdminBank() {
             const { error: dbError } = await (supabase as any).from('questions').insert({
                 title: title.trim(),
                 image_url: publicUrl,
-                correct_answer: answer.trim(),
+                correct_answer: qType === 'multiple_choice' ? mcAnswers.sort().join(',') : answer.trim(),
                 question_type: qType,
                 options: qType === 'multiple_choice' ? options : null,
                 default_time_limit: 60
@@ -91,6 +92,7 @@ export default function AdminBank() {
             setTitle("")
             setAnswer("")
             setOptions(["", "", "", ""])
+            setMcAnswers([])
             fetchQuestions()
         } catch (err: any) {
             logger.error("Upload failed:", err)
@@ -146,6 +148,7 @@ export default function AdminBank() {
                                 <Select value={qType} onValueChange={(val: any) => {
                                     setQType(val)
                                     setAnswer("") // reset answer when type changes
+                                    setMcAnswers([])
                                 }}>
                                     <SelectTrigger>
                                         <SelectValue />
@@ -171,17 +174,29 @@ export default function AdminBank() {
                                 </div>
                             ) : (
                                 <div className="space-y-4 w-full">
-                                    <Label>객관식 보기 (라디오 버튼으로 정답 선택)</Label>
+                                    <div className="flex justify-between items-center">
+                                        <Label>객관식 보기 (체크박스로 복수 정답 선택 가능)</Label>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setOptions([...options, ""])}
+                                        >
+                                            + 보기 추가
+                                        </Button>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                        {[0, 1, 2, 3].map((idx) => (
+                                        {options.map((_, idx) => (
                                             <div key={idx} className="flex items-center space-x-2">
                                                 <input
-                                                    type="radio"
-                                                    name="correct_answer"
+                                                    type="checkbox"
                                                     value={String(idx + 1)}
-                                                    checked={answer === String(idx + 1)}
-                                                    onChange={(e) => setAnswer(e.target.value)}
-                                                    className="w-4 h-4 text-primary"
+                                                    checked={mcAnswers.includes(String(idx + 1))}
+                                                    onChange={(e) => {
+                                                        const val = String(idx + 1)
+                                                        if (e.target.checked) setMcAnswers([...mcAnswers, val])
+                                                        else setMcAnswers(mcAnswers.filter(a => a !== val))
+                                                    }}
+                                                    className="w-4 h-4 text-primary rounded"
                                                 />
                                                 <span className="font-bold text-sm w-4">{idx + 1}.</span>
                                                 <Input
@@ -193,6 +208,20 @@ export default function AdminBank() {
                                                         setOptions(newOpts)
                                                     }}
                                                 />
+                                                {options.length > 2 && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="text-destructive flex-shrink-0"
+                                                        onClick={() => {
+                                                            const newOpts = options.filter((_, i) => i !== idx)
+                                                            setOptions(newOpts)
+                                                            setMcAnswers([]) // 초기화하여 정답 밀림 방지
+                                                        }}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -250,12 +279,16 @@ export default function AdminBank() {
                                 </div>
 
                                 {q.question_type === 'multiple_choice' && q.options && (
-                                    <div className="grid grid-cols-2 gap-1 mt-2 text-xs bg-muted p-2 rounded">
-                                        {(q.options as string[]).map((opt, i) => (
-                                            <div key={i} className={String(i + 1) === q.correct_answer ? "font-bold text-primary" : "text-muted-foreground"}>
-                                                {i + 1}. {opt}
-                                            </div>
-                                        ))}
+                                    <div className="flex flex-col gap-1 mt-2 text-xs bg-muted p-2 rounded">
+                                        {(q.options as string[]).map((opt, i) => {
+                                            const isCorrect = q.correct_answer?.split(',').includes(String(i + 1));
+                                            return (
+                                                <div key={i} className={isCorrect ? "font-bold text-primary flex items-center gap-1" : "text-muted-foreground flex items-center gap-1"}>
+                                                    <span className="w-3">{isCorrect ? <Check className="w-3 h-3" /> : null}</span>
+                                                    {i + 1}. {opt}
+                                                </div>
+                                            )
+                                        })}
                                     </div>
                                 )}
                             </div>
