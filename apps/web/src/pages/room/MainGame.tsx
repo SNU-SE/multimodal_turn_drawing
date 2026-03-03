@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -39,15 +39,39 @@ export default function MainGame() {
     const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#3b82f6")
     const [width, setWidth] = useState(6)
 
-    // Timer countdown (only on my turn)
-    useEffect(() => {
-        if (!turnState?.isPaused && isMyTurn && timeLeft > 0) {
-            const timer = setInterval(() => {
-                setTimeLeft((prev: number) => prev - 1)
-            }, 1000)
-            return () => clearInterval(timer)
+    // Guard to prevent double-firing endTurn
+    const isEndingTurnRef = useRef(false)
+
+    const handleEndTurn = async () => {
+        if (isEndingTurnRef.current || !isMyTurn) return
+        isEndingTurnRef.current = true
+        try {
+            await endTurn()
+        } finally {
+            // Reset after a delay so turn switch has time to propagate
+            setTimeout(() => { isEndingTurnRef.current = false }, 2000)
         }
+    }
+
+    // Timer countdown — only the current player drives the clock
+    useEffect(() => {
+        if (turnState?.isPaused || !isMyTurn || timeLeft <= 0) return
+
+        const timer = setInterval(() => {
+            setTimeLeft((prev: number) => {
+                const next = prev - 1
+                return next
+            })
+        }, 1000)
+        return () => clearInterval(timer)
     }, [turnState?.isPaused, isMyTurn, timeLeft])
+
+    // Auto-end turn when timer hits 0
+    useEffect(() => {
+        if (timeLeft === 0 && isMyTurn) {
+            handleEndTurn()
+        }
+    }, [timeLeft, isMyTurn])
 
     // Reset local time when turn switches or question advances
     useEffect(() => {
@@ -267,10 +291,10 @@ export default function MainGame() {
                 {/* Bottom Turn Actions */}
                 <div className="absolute bottom-6 right-6 z-30">
                     <Button
-                        onClick={() => endTurn()}
+                        onClick={handleEndTurn}
                         variant="outline"
                         className="rounded-full bg-card shadow-md border px-6 hover:text-primary transition-colors"
-                        disabled={!isMyTurn || isAnswering}
+                        disabled={!isMyTurn || isAnswering || isEndingTurnRef.current}
                     >
                         내 턴 넘기기
                     </Button>
