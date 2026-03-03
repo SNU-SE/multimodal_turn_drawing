@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useRef, useEffect, useState } from "react"
 import { getStroke } from "perfect-freehand"
 
 interface Point {
@@ -17,14 +17,13 @@ interface FreehandCanvasProps {
     color?: string
     width?: number
     disabled?: boolean
+    // strokes is the single source of truth from the store
     initialStrokes?: Stroke[]
     onStrokeEnd?: (stroke: Stroke) => void
-    onClear?: () => void
 }
 
 function getSvgPathFromStroke(stroke: number[][]) {
     if (!stroke.length) return ""
-
     const d = stroke.reduce(
         (acc, [x0, y0], i, arr) => {
             const [x1, y1] = arr[(i + 1) % arr.length]
@@ -33,9 +32,19 @@ function getSvgPathFromStroke(stroke: number[][]) {
         },
         ["M", ...stroke[0], "Q"]
     )
-
     d.push("Z")
     return d.join(" ")
+}
+
+function renderStroke(stroke: Stroke, index: number) {
+    const rawStroke = getStroke(stroke.points, {
+        size: stroke.width,
+        thinning: 0.5,
+        smoothing: 0.5,
+        streamline: 0.5,
+    })
+    const pathData = getSvgPathFromStroke(rawStroke)
+    return <path key={index} d={pathData} fill={stroke.color} />
 }
 
 export function FreehandCanvas({
@@ -45,8 +54,9 @@ export function FreehandCanvas({
     initialStrokes = [],
     onStrokeEnd,
 }: FreehandCanvasProps) {
-    const [strokes, setStrokes] = useState<Stroke[]>(initialStrokes)
+    // currentPoints: the stroke currently being drawn (local, not in store)
     const [currentPoints, setCurrentPoints] = useState<Point[]>([])
+    const svgRef = useRef<SVGSVGElement>(null)
 
     const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled) return
@@ -62,7 +72,7 @@ export function FreehandCanvas({
     const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled || currentPoints.length === 0) return
         const bounds = e.currentTarget.getBoundingClientRect()
-        setCurrentPoints((prev) => [
+        setCurrentPoints(prev => [
             ...prev,
             { x: e.clientX - bounds.left, y: e.clientY - bounds.top, pressure: e.pressure }
         ])
@@ -70,50 +80,42 @@ export function FreehandCanvas({
 
     const handlePointerUp = () => {
         if (disabled || currentPoints.length === 0) return
-        const newStroke = { points: currentPoints, color, width }
-        setStrokes((prev) => [...prev, newStroke])
+        const newStroke: Stroke = { points: currentPoints, color, width }
         setCurrentPoints([])
         onStrokeEnd?.(newStroke)
     }
 
+    // Clear currentPoints when disabled changes (e.g. turn switches)
     useEffect(() => {
-        setStrokes(initialStrokes)
-    }, [initialStrokes])
+        if (disabled) setCurrentPoints([])
+    }, [disabled])
 
-    const renderStroke = (stroke: Stroke, index: number) => {
-        const rawStroke = getStroke(stroke.points, {
-            size: stroke.width,
+    const currentStrokePath = currentPoints.length > 0
+        ? getSvgPathFromStroke(getStroke(currentPoints, {
+            size: width,
             thinning: 0.5,
             smoothing: 0.5,
             streamline: 0.5,
-        })
-        const pathData = getSvgPathFromStroke(rawStroke)
-        return <path key={index} d={pathData} fill={stroke.color} />
-    }
+        }))
+        : null
 
     return (
-        <div className={`w-full h-full border rounded-md bg-white overflow-hidden ${disabled ? 'opacity-80' : 'cursor-crosshair'}`}>
+        <div className={`w-full h-full overflow-hidden ${disabled ? 'opacity-90' : 'cursor-crosshair'}`}>
             <svg
-                className="w-full h-full touch-none"
+                ref={svgRef}
+                className="w-full h-full touch-none bg-white"
                 onPointerDown={handlePointerDown}
                 onPointerMove={handlePointerMove}
                 onPointerUp={handlePointerUp}
                 onPointerLeave={handlePointerUp}
                 onPointerCancel={handlePointerUp}
             >
-                {strokes.map(renderStroke)}
-                {currentPoints.length > 0 && (
-                    <path
-                        d={getSvgPathFromStroke(
-                            getStroke(currentPoints, {
-                                size: width,
-                                thinning: 0.5,
-                                smoothing: 0.5,
-                                streamline: 0.5,
-                            })
-                        )}
-                        fill={color}
-                    />
+                {/* Committed strokes from store — re-renders whenever initialStrokes reference changes */}
+                {initialStrokes.map(renderStroke)}
+
+                {/* In-progress stroke (local only, for immediate feedback) */}
+                {currentStrokePath && (
+                    <path d={currentStrokePath} fill={color} opacity={0.85} />
                 )}
             </svg>
         </div>
