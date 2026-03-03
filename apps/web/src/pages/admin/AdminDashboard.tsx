@@ -1,16 +1,65 @@
-import { Link } from "react-router-dom"
+import { Link, useNavigate } from "react-router-dom"
 import { Users, PlayCircle, CheckCircle, Clock } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { useEffect, useState } from "react"
+import { supabase } from "@/lib/supabase"
+import { logger } from "@/lib/logger"
 
-// Mock Data
-const MOCK_GROUPS = [
-    { id: "1", name: "1차 실습", total: 10, pending: 2, playing: 5, completed: 3 },
-    { id: "2", name: "A팀 그룹", total: 8, pending: 8, playing: 0, completed: 0 },
-    { id: "3", name: "신입사원 팀빌딩", total: 15, pending: 0, playing: 0, completed: 15 },
-]
+interface GroupStats {
+    id: string
+    name: string
+    total: number
+    pending: number
+    playing: number
+    completed: number
+}
 
 export default function AdminDashboard() {
+    const [groups, setGroups] = useState<GroupStats[]>([])
+    const navigate = useNavigate()
+
+    const fetchGroups = async () => {
+        logger.info("Admin fetching room groups...")
+        const { data: groupData } = await (supabase as any).from('room_groups').select('*').order('created_at', { ascending: false })
+        if (!groupData) return
+
+        const { data: roomData } = await (supabase as any).from('rooms').select('id, group_id, status')
+
+        const mapped = (groupData as any[]).map(g => {
+            const grpRooms = (roomData as any[])?.filter(r => r.group_id === g.id) || []
+            return {
+                ...g,
+                total: grpRooms.length,
+                pending: grpRooms.filter(r => r.status === 'pending').length,
+                playing: grpRooms.filter(r => r.status === 'playing').length,
+                completed: grpRooms.filter(r => r.status === 'completed').length,
+            }
+        })
+        setGroups(mapped)
+    }
+
+    useEffect(() => {
+        fetchGroups()
+    }, [])
+
+    const handleCreateGroup = async () => {
+        const name = window.prompt('새로운 세션(그룹) 이름을 입력하세요. (예: 1차 실습)')
+        if (!name || !name.trim()) return
+
+        logger.info(`Creating new group: ${name}`)
+        const { data, error } = await (supabase as any).from('room_groups').insert({ name: name.trim() }).select().single()
+
+        if (error || !data) {
+            logger.error("Failed to create group", error)
+            alert('그룹 생성에 실패했습니다.')
+            return
+        }
+
+        // Navigate directly to the newly created group to upload excel
+        navigate(`/admin/groups/${data.id}`)
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -18,13 +67,13 @@ export default function AdminDashboard() {
                     <h2 className="text-2xl font-bold tracking-tight">세션 관리</h2>
                     <p className="text-muted-foreground">생성된 방 그룹과 진행 현황을 모니터링합니다.</p>
                 </div>
-                <Button className="bg-primary hover:bg-primary/90">
+                <Button onClick={handleCreateGroup} className="bg-primary hover:bg-primary/90">
                     + 새로운 세션(방) 생성
                 </Button>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {MOCK_GROUPS.map((group) => (
+                {groups.map((group) => (
                     <Link key={group.id} to={`/admin/groups/${group.id}`}>
                         <Card className="hover:border-primary/50 transition-colors cursor-pointer">
                             <CardHeader className="pb-2">

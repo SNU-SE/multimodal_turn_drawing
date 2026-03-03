@@ -40,9 +40,6 @@ interface RoomState {
     endTurn: () => Promise<void>
 }
 
-// Generate a pseudo UUID for anonymous testing for now
-const generateMockUUID = () => crypto.randomUUID()
-
 export const useRoomStore = create<RoomState>((set, get) => {
     let intervalId: any = null
     let channel: ReturnType<typeof supabase.channel> | null = null
@@ -63,41 +60,30 @@ export const useRoomStore = create<RoomState>((set, get) => {
         isAnswering: false,
 
         joinRoom: async (code: string) => {
-            logger.info('Attempting to join room with code:', code)
+            logger.info('Attempting to join room with invite code:', code)
             set({ error: null })
             try {
+                // Find room by either player1 or player2 invite code
                 const { data, error } = await supabase
                     .from('rooms')
                     .select('*')
-                    .eq('code', code)
+                    .or(`player1_invite_code.eq.${code},player2_invite_code.eq.${code}`)
                     .single()
 
                 const room = data as RoomRow | null
 
                 if (error || !room) {
-                    throw new Error('방을 찾을 수 없습니다.')
+                    throw new Error('올바르지 않은 접속 코드입니다.')
                 }
 
-                // Assign mock Player ID if needed or detect player 1/2
-                // For actual app, users table assignment should happen. Here we just mock local session
-                let localPlayerId = localStorage.getItem('local_player_id')
-                if (!localPlayerId) {
-                    localPlayerId = generateMockUUID()
-                    localStorage.setItem('local_player_id', localPlayerId)
+                const isPlayer1 = room.player1_invite_code === code
+                const assignedPlayerId = isPlayer1 ? room.player1_id : room.player2_id
 
-                    // Create user in DB to satisfy canvas_logs player_id FK constraint
-                    await supabase.from('users').insert({
-                        id: localPlayerId,
-                        admin_alias: `Guest_${localPlayerId.substring(0, 4)}`
-                    } as any)
+                if (!assignedPlayerId) {
+                    throw new Error('이 자리에 할당된 참가자 정보가 없습니다.')
                 }
 
-                const isPlayer1 = room.player1_id === localPlayerId || (!room.player1_id)
-
-                // For real app we'd UPDATE the room to set player1/2_id
-                // We will skip that UPDATE to not block if RLS is strict, just proceed with local assumptions
-
-                set({ room, roomId: room.id, playerId: localPlayerId, isPlayer1, isConnected: true })
+                set({ room, roomId: room.id, playerId: assignedPlayerId, isPlayer1, isConnected: true })
 
                 // 1. Subscribe to DB changes for this room
                 channel = supabase.channel(`room:${room.id}`)

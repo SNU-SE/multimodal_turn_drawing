@@ -19,7 +19,9 @@ CREATE TABLE public.room_groups (
 CREATE TABLE public.rooms (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
   group_id UUID REFERENCES public.room_groups(id) ON DELETE CASCADE,
-  code TEXT NOT NULL UNIQUE,
+  code TEXT UNIQUE,
+  player1_invite_code TEXT UNIQUE,
+  player2_invite_code TEXT UNIQUE,
   status TEXT DEFAULT 'pending'::text, -- 'pending', 'playing', 'completed'
   player1_id UUID REFERENCES public.users(id),
   player2_id UUID REFERENCES public.users(id),

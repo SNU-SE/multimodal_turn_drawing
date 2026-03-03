@@ -47,8 +47,10 @@ export interface Database {
                 Row: {
                     id: string
                     group_id: string
-                    code: string
+                    code: string | null
                     status: 'pending' | 'playing' | 'completed'
+                    player1_invite_code: string | null
+                    player2_invite_code: string | null
                     player1_id: string | null
                     player2_id: string | null
                     current_question_index: number
@@ -58,8 +60,10 @@ export interface Database {
                 Insert: {
                     id?: string
                     group_id: string
-                    code: string
+                    code?: string | null
                     status?: 'pending' | 'playing' | 'completed'
+                    player1_invite_code?: string | null
+                    player2_invite_code?: string | null
                     player1_id?: string | null
                     player2_id?: string | null
                     current_question_index?: number
@@ -69,8 +73,10 @@ export interface Database {
                 Update: {
                     id?: string
                     group_id?: string
-                    code?: string
+                    code?: string | null
                     status?: 'pending' | 'playing' | 'completed'
+                    player1_invite_code?: string | null
+                    player2_invite_code?: string | null
                     player1_id?: string | null
                     player2_id?: string | null
                     current_question_index?: number
