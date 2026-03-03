@@ -39,6 +39,9 @@ interface RoomState {
     updateAnswerText: (text: string) => void
     submitAnswer: () => Promise<void>
     endTurn: () => Promise<void>
+
+    // Added to trigger room updates to partner
+    broadcastRoomUpdate: (updatedRoom: RoomRow) => void
 }
 
 export const useRoomStore = create<RoomState>((set, get) => {
@@ -129,7 +132,15 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     }
                 })
 
-                // Listen to Postgres changes
+                // Broadcast for room state updates (fallback for missing postgres realtime)
+                channel.on('broadcast', { event: 'room_update' }, (payload) => {
+                    logger.info(`Partner updated room state:`, payload.payload)
+                    if (payload.payload) {
+                        set({ room: payload.payload as RoomRow })
+                    }
+                })
+
+                // Listen to Postgres changes (if enabled)
                 channel.on(
                     'postgres' as any,
                     { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` },
@@ -261,10 +272,32 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 }
             }
             await supabase.from('rooms').update(payload as never).eq('id', room.id)
+
+            // Broadcast room update instantly
+            if (channel) {
+                const updatedRoom = { ...room, ...payload }
+                channel.send({
+                    type: 'broadcast',
+                    event: 'room_update',
+                    payload: updatedRoom
+                })
+                set({ room: updatedRoom })
+            }
         },
 
         cleanup: () => {
             if (intervalId) clearInterval(intervalId)
+        },
+
+        broadcastRoomUpdate: (updatedRoom: RoomRow) => {
+            if (channel) {
+                channel.send({
+                    type: 'broadcast',
+                    event: 'room_update',
+                    payload: updatedRoom
+                })
+                set({ room: updatedRoom })
+            }
         }
     }
 })

@@ -1,4 +1,5 @@
 import { useRoomStore } from "@/store/roomStore"
+import { supabase } from "@/lib/supabase"
 import { Users, Info, Eraser } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -7,11 +8,41 @@ import { logger } from "@/lib/logger"
 import { useEffect } from "react"
 
 export default function LobbyWait() {
-    const { room, isPlayer1, partnerReady, isReady, toggleReady, strokes, addStroke, clearStrokes } = useRoomStore()
+    const { room, isPlayer1, partnerReady, isReady, toggleReady, strokes, addStroke, clearStrokes, broadcastRoomUpdate } = useRoomStore()
 
     useEffect(() => {
         logger.info(`Lobby Wait Mounted for room ${room?.id}. I am Player 1? ${isPlayer1}. Partner ready? ${partnerReady}`)
     }, [room?.id, isPlayer1, partnerReady])
+
+    useEffect(() => {
+        if (isReady && partnerReady && isPlayer1 && room?.status === 'pending') {
+            logger.info("Both players are ready. Transitioning to playing state...")
+            // Player 1 takes charge of updating the room to 'playing'
+            const startRoom = async () => {
+                try {
+                    // Initialize turn_state
+                    const initialTurnState = {
+                        currentPlayerId: room.player1_id,
+                        timeLeft: 60,
+                        isPaused: false
+                    }
+                    await (supabase as any).from('rooms').update({
+                        status: 'playing',
+                        turn_state: initialTurnState
+                    }).eq('id', room.id)
+
+                    broadcastRoomUpdate({
+                        ...room,
+                        status: 'playing',
+                        turn_state: initialTurnState
+                    } as any)
+                } catch (e) {
+                    logger.error("Failed to start room:", e)
+                }
+            }
+            startRoom()
+        }
+    }, [isReady, partnerReady, isPlayer1, room])
 
     const playerColor = isPlayer1 ? "#F45B69" : "#3b82f6"
     const playerRoleName = isPlayer1 ? "Player 1 (Red)" : "Player 2 (Blue)"
