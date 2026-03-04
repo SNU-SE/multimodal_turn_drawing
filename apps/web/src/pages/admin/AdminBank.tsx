@@ -288,8 +288,8 @@ export default function AdminBank() {
     return (
         <div className="space-y-6">
             <div>
-                <h2 className="text-2xl font-bold tracking-tight">문제 은행 (Question Bank)</h2>
-                <p className="text-muted-foreground">턴제 드로잉에서 사용할 문제를 등록하고 관리합니다.</p>
+                <h2 className="text-2xl font-bold tracking-tight">문제 은행</h2>
+                <p className="text-muted-foreground">턴제 드로잉 시스템에서 사용할 문제를 등록하고 관리합니다.</p>
             </div>
 
             <Card ref={formRef} className={`bg-muted/30 ${editingId ? 'ring-2 ring-primary' : ''}`}>
@@ -327,8 +327,8 @@ export default function AdminBank() {
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="essay">주관식 (Essay)</SelectItem>
-                                        <SelectItem value="multiple_choice">객관식 (Multiple Choice)</SelectItem>
+                                        <SelectItem value="essay">주관식</SelectItem>
+                                        <SelectItem value="multiple_choice">객관식</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -336,14 +336,14 @@ export default function AdminBank() {
 
                         {/* Section 2: Question Content (text or image) */}
                         <div className="p-4 bg-background rounded-md border space-y-4">
-                            <Label className="text-base font-semibold">문항 내용</Label>
-                            <p className="text-xs text-muted-foreground -mt-2">텍스트와 이미지 모두 입력 가능합니다. 최소 하나는 입력해주세요.</p>
+                            <Label className="text-base font-semibold">문항 질문 내용</Label>
+                            <p className="text-xs text-muted-foreground -mt-2">원하는 문제 질문을 입력합니다. 텍스트와 이미지 모두 입력 가능합니다. 최소 하나는 입력해주세요.</p>
 
                             <div className="space-y-2">
                                 <Label>텍스트 내용</Label>
                                 <textarea
                                     className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                                    placeholder="문항 내용을 입력하세요 (예: 다음 그림에서 보이는 과일의 이름은?)"
+                                    placeholder="문항 질문을 입력하세요 (예: 다음 그림에서 보이는 과일의 이름은?)"
                                     value={content}
                                     onChange={(e) => setContent(e.target.value)}
                                     rows={3}
@@ -374,7 +374,7 @@ export default function AdminBank() {
                         {/* Section 3: Question Image */}
                         <div className="p-4 bg-background rounded-md border space-y-4">
                             <Label className="text-base font-semibold">문제에 사용할 이미지</Label>
-                            <p className="text-xs text-muted-foreground -mt-2">게임 화면에서 표시될 참고 이미지입니다. (선택)</p>
+                            <p className="text-xs text-muted-foreground -mt-2">제시문 혹은 제시할 이미지를 업로드합니다. (선택 사항)</p>
 
                             <ImageUploadArea
                                 label="문제 이미지"

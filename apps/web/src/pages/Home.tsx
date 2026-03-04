@@ -30,9 +30,9 @@ export default function Home() {
 
             <Card className="w-full max-w-md">
                 <CardHeader className="text-center">
-                    <CardTitle className="text-2xl font-bold">협력 드로잉 플랫폼</CardTitle>
+                    <CardTitle className="text-2xl font-bold">함께 그리며 해결하기</CardTitle>
                     <CardDescription>
-                        관리자에게 부여받은 6자리 접속 코드를 입력하세요.
+                        선생님께서 알려주신 6자리 접속 코드를 입력하세요.<br /> 개인별로 서로 다른 접속 코드입니다.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -40,7 +40,7 @@ export default function Home() {
                         <div className="space-y-2">
                             <Input
                                 type="text"
-                                placeholder="Ex. 123456"
+                                placeholder="1 2 3 4 5 6"
                                 className="text-center text-2xl tracking-widest h-14"
                                 maxLength={6}
                                 value={code}

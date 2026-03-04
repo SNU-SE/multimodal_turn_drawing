@@ -114,7 +114,7 @@ export default function MainGame() {
                             <p className="font-mono text-xl font-bold">{room.code}</p>
                         </div>
                         <p className="text-xs text-muted-foreground">
-                            관리자가 결과를 다운로드할 수 있습니다.
+                            수고하셨습니다.
                         </p>
                     </CardContent>
                 </Card>
@@ -164,15 +164,37 @@ export default function MainGame() {
                 {/* Question Area */}
                 <div className="flex-1 p-6 flex flex-col items-center justify-center border-b bg-white overflow-hidden relative">
                     <p className="text-sm font-medium text-muted-foreground absolute top-4 left-4">Question</p>
-                    <div className="w-full h-full max-h-[300px] border-2 border-dashed border-muted-foreground/30 rounded-xl flex items-center justify-center text-muted-foreground bg-muted/10 relative overflow-hidden group">
-                        {currentQuestionObj?.image_url ? (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-4 overflow-auto">
+                        {/* Content text */}
+                        {currentQuestionObj?.content && (
+                            <p className="text-lg font-medium text-center px-4 leading-relaxed">
+                                {currentQuestionObj.content}
+                            </p>
+                        )}
+
+                        {/* Content image */}
+                        {currentQuestionObj?.content_image_url && (
                             <img
-                                src={currentQuestionObj.image_url}
-                                alt="Question"
-                                className="object-contain w-full h-full"
+                                src={currentQuestionObj.content_image_url}
+                                alt="Question content"
+                                className="max-h-[200px] object-contain rounded-lg border"
                             />
-                        ) : (
-                            <div className="flex flex-col items-center gap-2">
+                        )}
+
+                        {/* Question image */}
+                        {currentQuestionObj?.image_url && (
+                            <div className="w-full max-h-[300px] border-2 border-dashed border-muted-foreground/30 rounded-xl flex items-center justify-center bg-muted/10 overflow-hidden">
+                                <img
+                                    src={currentQuestionObj.image_url}
+                                    alt="Question"
+                                    className="object-contain w-full h-full"
+                                />
+                            </div>
+                        )}
+
+                        {/* Fallback: no content at all */}
+                        {!currentQuestionObj?.content && !currentQuestionObj?.content_image_url && !currentQuestionObj?.image_url && (
+                            <div className="flex flex-col items-center gap-2 text-muted-foreground">
                                 <span className="text-sm">문제를 불러오는 중...</span>
                             </div>
                         )}

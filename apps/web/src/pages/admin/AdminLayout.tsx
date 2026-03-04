@@ -22,20 +22,17 @@ export default function AdminLayout() {
             {/* Sidebar */}
             <aside className="w-64 border-r border-border bg-card p-4 flex flex-col">
                 <div className="flex items-center gap-2 mb-8">
-                    <div className="w-8 h-8 rounded-md bg-primary flex items-center justify-center text-primary-foreground font-bold">
-                        T
-                    </div>
-                    <h2 className="text-xl font-bold tracking-tight">Admin Panel</h2>
+                    <h2 className="text-xl font-bold tracking-tight">관리자 페이지</h2>
                 </div>
 
                 <nav className="flex-1 space-y-2">
                     <Link to="/admin" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${isSessionsActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground'}`}>
                         <Users className="w-5 h-5" />
-                        세션 관리 (Sessions)
+                        세션 관리
                     </Link>
                     <Link to="/admin/questions" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${isQuestionsActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground'}`}>
                         <Settings className="w-5 h-5" />
-                        문제 은행 (Bank)
+                        문제 은행
                     </Link>
                 </nav>
 
@@ -45,7 +42,7 @@ export default function AdminLayout() {
                         className="flex w-full items-center gap-3 px-3 py-2 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
                     >
                         <LogOut className="w-5 h-5" />
-                        Sign out
+                        나가기
                     </button>
                 </div>
             </aside>

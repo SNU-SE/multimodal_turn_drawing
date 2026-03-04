@@ -25,8 +25,8 @@ export default function LobbyWait() {
                         {room?.code}
                     </div>
                     <div>
-                        <h1 className="font-bold text-lg">대기실 (Lobby)</h1>
-                        <p className="text-sm text-muted-foreground">본 게임이 시작되기 전 캔버스를 테스트하세요.</p>
+                        <h1 className="font-bold text-lg">대기실</h1>
+                        <p className="text-sm text-muted-foreground">두 플레이어가 준비가 다 될 때까지 캔버스를 테스트하세요.</p>
                     </div>
                 </div>
 
