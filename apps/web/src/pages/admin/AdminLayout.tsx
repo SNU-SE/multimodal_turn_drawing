@@ -1,19 +1,15 @@
 import { Outlet, Link, useNavigate } from "react-router-dom"
 import { Users, Settings, LogOut } from "lucide-react"
-import { supabase } from "@/lib/supabase"
 import { logger } from "@/lib/logger"
+
+const SESSION_KEY = "admin_authenticated"
 
 export default function AdminLayout() {
     const navigate = useNavigate()
 
-    const handleSignOut = async () => {
-        logger.info("[AdminLayout] 로그아웃 요청")
-        const { error } = await supabase.auth.signOut()
-        if (error) {
-            logger.error("[AdminLayout] 로그아웃 실패:", error.message)
-        } else {
-            logger.info("[AdminLayout] 로그아웃 성공")
-        }
+    const handleSignOut = () => {
+        logger.info("[AdminLayout] 로그아웃")
+        sessionStorage.removeItem(SESSION_KEY)
         navigate("/admin/login")
     }
 

@@ -1,47 +1,30 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Loader2 } from "lucide-react"
 import { logger } from "@/lib/logger"
 
-const ADMIN_EMAIL = "admin@mail.com"
+const ADMIN_PASSWORD = "38874"
+const SESSION_KEY = "admin_authenticated"
 
 export default function AdminLogin() {
     const navigate = useNavigate()
     const [password, setPassword] = useState("")
     const [error, setError] = useState<string | null>(null)
-    const [loading, setLoading] = useState(false)
 
-    const handleSubmit = async (e: React.FormEvent) => {
+    const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        setError(null)
-        setLoading(true)
+        logger.info("[AdminLogin] 로그인 시도")
 
-        logger.info("[AdminLogin] 로그인 시도:", ADMIN_EMAIL)
-
-        try {
-            const { data, error: authError } = await supabase.auth.signInWithPassword({
-                email: ADMIN_EMAIL,
-                password
-            })
-
-            if (authError) {
-                logger.error("[AdminLogin] 로그인 실패:", authError.message, authError.status)
-                setError(`로그인 실패: ${authError.message}`)
-                setLoading(false)
-                return
-            }
-
-            logger.info("[AdminLogin] 로그인 성공:", { userId: data.user?.id, email: data.user?.email })
+        if (password === ADMIN_PASSWORD) {
+            logger.info("[AdminLogin] 로그인 성공")
+            sessionStorage.setItem(SESSION_KEY, "true")
             navigate("/admin")
-        } catch (err: any) {
-            logger.error("[AdminLogin] 예외 발생:", err)
-            setError(`오류: ${err.message}`)
-            setLoading(false)
+        } else {
+            logger.error("[AdminLogin] 로그인 실패: 비밀번호 불일치")
+            setError("비밀번호가 올바르지 않습니다.")
         }
     }
 
@@ -75,8 +58,7 @@ export default function AdminLogin() {
                             <p className="text-sm text-destructive">{error}</p>
                         )}
 
-                        <Button type="submit" className="w-full" disabled={loading}>
-                            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        <Button type="submit" className="w-full">
                             로그인
                         </Button>
                     </form>
