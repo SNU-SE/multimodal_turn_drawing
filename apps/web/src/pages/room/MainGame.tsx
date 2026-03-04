@@ -422,25 +422,19 @@ export default function MainGame() {
             {/* RIGHT 2/3: Canvas & Toolbar */}
             <main className="flex-1 flex flex-col bg-muted/10 relative">
 
-                {/* Turn indicator Overlay if NOT my turn (hidden in review mode) */}
+                {/* Turn indicator banner if NOT my turn (hidden in review mode) */}
                 {!isMyTurn && !isReviewMode && (
-                    <div className="absolute inset-0 z-40 bg-background/50 backdrop-blur-[1px] flex flex-col items-center justify-center">
-                        <Card className="shadow-xl border-primary/20 bg-card">
-                            <CardContent className="p-8 text-center flex flex-col items-center gap-4">
-                                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary animate-bounce">
-                                    <Pointer />
-                                </div>
-                                <div>
-                                    <h3 className="text-xl font-bold">상대방의 턴입니다</h3>
-                                    <p className="text-muted-foreground mt-2">상대방이 그림을 그리고 있습니다. 관전해주세요.</p>
-                                </div>
-                            </CardContent>
-                        </Card>
+                    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-40
+                        flex items-center gap-2 px-5 py-2.5
+                        bg-card/90 backdrop-blur-sm border rounded-full shadow-lg
+                        text-sm font-medium text-muted-foreground">
+                        <Pointer className="w-4 h-4 text-primary animate-bounce" />
+                        상대방의 턴입니다 — 관전 중
                     </div>
                 )}
 
                 {/* Floating Toolbar */}
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-2 bg-card border rounded-full shadow-lg ${!isMyTurn && !isReviewMode && 'opacity-50 pointer-events-none'}`}>
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-2 bg-card border rounded-full shadow-lg ${!isMyTurn && !isReviewMode && 'hidden'}`}>
                     <div className="flex items-center gap-1 px-2 border-r pr-4">
                         {["#F45B69", "#22181C", "#5386E4", "#63A375", "#f59e0b"].map((c) => (
                             <button
