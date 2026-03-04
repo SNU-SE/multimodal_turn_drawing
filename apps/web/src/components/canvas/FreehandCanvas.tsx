@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, useCallback } from "react"
 import { getStroke } from "perfect-freehand"
 
 interface Point {
@@ -8,20 +8,37 @@ interface Point {
 }
 
 interface Stroke {
+    id?: string
     points: Point[]
     color: string
     width: number
+}
+
+export interface CanvasImage {
+    url: string
+    x: number
+    y: number
+    width: number
+    height: number
+    visible: boolean
 }
 
 interface FreehandCanvasProps {
     color?: string
     width?: number
     disabled?: boolean
-    // strokes is the single source of truth from the store
     initialStrokes?: Stroke[]
     partnerStroke?: Stroke | null
     onStrokeUpdate?: (stroke: Stroke) => void
     onStrokeEnd?: (stroke: Stroke) => void
+    // Eraser
+    eraserMode?: boolean
+    onEraseStroke?: (strokeId: string) => void
+    // Image overlay
+    canvasImage?: CanvasImage | null
+    imageEditMode?: boolean
+    onImageUpdate?: (image: CanvasImage) => void
+    onImageUpdateEnd?: (image: CanvasImage) => void
 }
 
 function getSvgPathFromStroke(stroke: number[][]) {
@@ -38,17 +55,6 @@ function getSvgPathFromStroke(stroke: number[][]) {
     return d.join(" ")
 }
 
-function renderStroke(stroke: Stroke, index: number) {
-    const rawStroke = getStroke(stroke.points, {
-        size: stroke.width,
-        thinning: 0.5,
-        smoothing: 0.5,
-        streamline: 0.5,
-    })
-    const pathData = getSvgPathFromStroke(rawStroke)
-    return <path key={index} d={pathData} fill={stroke.color} />
-}
-
 export function FreehandCanvas({
     color = "#F45B69",
     width = 8,
@@ -57,14 +63,97 @@ export function FreehandCanvas({
     partnerStroke = null,
     onStrokeUpdate,
     onStrokeEnd,
+    eraserMode = false,
+    onEraseStroke,
+    canvasImage = null,
+    imageEditMode = false,
+    onImageUpdate,
+    onImageUpdateEnd,
 }: FreehandCanvasProps) {
-    // currentPoints: the stroke currently being drawn (local, not in store)
     const [currentPoints, setCurrentPoints] = useState<Point[]>([])
     const svgRef = useRef<SVGSVGElement>(null)
     const lastUpdateTimeRef = useRef(0)
 
+    // Eraser: track which stroke IDs have been erased during this drag
+    const erasedDuringDragRef = useRef<Set<string>>(new Set())
+    const isErasingRef = useRef(false)
+
+    // Image drag/resize state
+    const imageDragRef = useRef<{
+        type: 'move' | 'resize'
+        startX: number
+        startY: number
+        origImage: CanvasImage
+    } | null>(null)
+
+    // ── Hit-test for eraser: check SVG elements at point ──
+    const eraseAtPoint = useCallback((clientX: number, clientY: number) => {
+        if (!svgRef.current || !onEraseStroke) return
+
+        // Check a small area around the touch point (8px radius)
+        const offsets = [
+            [0, 0], [-6, 0], [6, 0], [0, -6], [0, 6],
+            [-4, -4], [4, -4], [-4, 4], [4, 4]
+        ]
+        for (const [dx, dy] of offsets) {
+            const el = document.elementFromPoint(clientX + dx, clientY + dy)
+            if (el && el instanceof SVGPathElement) {
+                const strokeId = el.getAttribute('data-stroke-id')
+                if (strokeId && !erasedDuringDragRef.current.has(strokeId)) {
+                    erasedDuringDragRef.current.add(strokeId)
+                    onEraseStroke(strokeId)
+                }
+            }
+        }
+    }, [onEraseStroke])
+
+    // ── Pointer handlers ──
     const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled) return
+
+        // Image edit mode: handle image drag/resize
+        if (imageEditMode && canvasImage) {
+            const target = e.target as SVGElement
+            const bounds = e.currentTarget.getBoundingClientRect()
+            const px = e.clientX - bounds.left
+            const py = e.clientY - bounds.top
+
+            if (target.getAttribute('data-role') === 'resize-handle') {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                imageDragRef.current = {
+                    type: 'resize',
+                    startX: px,
+                    startY: py,
+                    origImage: { ...canvasImage }
+                }
+                return
+            }
+
+            // Check if click is on the image area
+            if (
+                px >= canvasImage.x && px <= canvasImage.x + canvasImage.width &&
+                py >= canvasImage.y && py <= canvasImage.y + canvasImage.height
+            ) {
+                e.currentTarget.setPointerCapture(e.pointerId)
+                imageDragRef.current = {
+                    type: 'move',
+                    startX: px,
+                    startY: py,
+                    origImage: { ...canvasImage }
+                }
+                return
+            }
+        }
+
+        if (eraserMode) {
+            e.currentTarget.setPointerCapture(e.pointerId)
+            isErasingRef.current = true
+            erasedDuringDragRef.current.clear()
+            eraseAtPoint(e.clientX, e.clientY)
+            return
+        }
+
+        // Normal drawing
         e.currentTarget.setPointerCapture(e.pointerId)
         const bounds = e.currentTarget.getBoundingClientRect()
         setCurrentPoints([{
@@ -75,13 +164,49 @@ export function FreehandCanvas({
     }
 
     const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
-        if (disabled || currentPoints.length === 0) return
+        if (disabled) return
+
+        // Image drag/resize
+        if (imageDragRef.current && canvasImage && onImageUpdate) {
+            const bounds = e.currentTarget.getBoundingClientRect()
+            const px = e.clientX - bounds.left
+            const py = e.clientY - bounds.top
+            const { type, startX, startY, origImage } = imageDragRef.current
+
+            if (type === 'move') {
+                const dx = px - startX
+                const dy = py - startY
+                onImageUpdate({
+                    ...origImage,
+                    x: origImage.x + dx,
+                    y: origImage.y + dy
+                })
+            } else {
+                // Resize keeping aspect ratio
+                const dx = px - startX
+                const aspect = origImage.width / origImage.height
+                const newWidth = Math.max(50, origImage.width + dx)
+                const newHeight = newWidth / aspect
+                onImageUpdate({
+                    ...origImage,
+                    width: newWidth,
+                    height: newHeight
+                })
+            }
+            return
+        }
+
+        if (eraserMode && isErasingRef.current) {
+            eraseAtPoint(e.clientX, e.clientY)
+            return
+        }
+
+        if (currentPoints.length === 0) return
         const bounds = e.currentTarget.getBoundingClientRect()
         const newPoint = { x: e.clientX - bounds.left, y: e.clientY - bounds.top, pressure: e.pressure }
 
         setCurrentPoints(prev => {
             const next = [...prev, newPoint]
-            // Throttle sending the active stroke to ~10 times per second (100ms)
             const now = Date.now()
             if (now - lastUpdateTimeRef.current > 100) {
                 lastUpdateTimeRef.current = now
@@ -92,13 +217,28 @@ export function FreehandCanvas({
     }
 
     const handlePointerUp = () => {
-        if (disabled || currentPoints.length === 0) return
+        if (disabled) return
+
+        // Image drag/resize end
+        if (imageDragRef.current && canvasImage && onImageUpdateEnd) {
+            onImageUpdateEnd(canvasImage)
+            imageDragRef.current = null
+            return
+        }
+        imageDragRef.current = null
+
+        if (eraserMode) {
+            isErasingRef.current = false
+            erasedDuringDragRef.current.clear()
+            return
+        }
+
+        if (currentPoints.length === 0) return
         const newStroke: Stroke = { points: currentPoints, color, width }
         setCurrentPoints([])
         onStrokeEnd?.(newStroke)
     }
 
-    // Clear currentPoints when disabled changes (e.g. turn switches)
     useEffect(() => {
         if (disabled) setCurrentPoints([])
     }, [disabled])
@@ -112,8 +252,16 @@ export function FreehandCanvas({
         }))
         : null
 
+    const cursorClass = disabled
+        ? 'opacity-90'
+        : eraserMode
+            ? 'cursor-pointer'
+            : imageEditMode
+                ? 'cursor-move'
+                : 'cursor-crosshair'
+
     return (
-        <div className={`w-full h-full overflow-hidden ${disabled ? 'opacity-90' : 'cursor-crosshair'}`}>
+        <div className={`w-full h-full overflow-hidden ${cursorClass}`}>
             <svg
                 ref={svgRef}
                 className="w-full h-full touch-none bg-white"
@@ -123,15 +271,85 @@ export function FreehandCanvas({
                 onPointerLeave={handlePointerUp}
                 onPointerCancel={handlePointerUp}
             >
-                {/* Committed strokes from store — re-renders whenever initialStrokes reference changes */}
-                {initialStrokes.map(renderStroke)}
+                {/* Image overlay — behind all strokes */}
+                {canvasImage && canvasImage.visible && (
+                    <image
+                        href={canvasImage.url}
+                        x={canvasImage.x}
+                        y={canvasImage.y}
+                        width={canvasImage.width}
+                        height={canvasImage.height}
+                        preserveAspectRatio="xMidYMid meet"
+                        style={{ pointerEvents: 'none' }}
+                    />
+                )}
 
-                {/* Partner's active stroke (currently being drawn) */}
-                {partnerStroke && renderStroke(partnerStroke, -1)}
+                {/* Image edit mode: border + resize handle */}
+                {imageEditMode && canvasImage && canvasImage.visible && (
+                    <>
+                        <rect
+                            x={canvasImage.x}
+                            y={canvasImage.y}
+                            width={canvasImage.width}
+                            height={canvasImage.height}
+                            fill="none"
+                            stroke="#3b82f6"
+                            strokeWidth={2}
+                            strokeDasharray="6 3"
+                            style={{ pointerEvents: 'none' }}
+                        />
+                        <rect
+                            data-role="resize-handle"
+                            x={canvasImage.x + canvasImage.width - 10}
+                            y={canvasImage.y + canvasImage.height - 10}
+                            width={20}
+                            height={20}
+                            rx={3}
+                            fill="#3b82f6"
+                            stroke="white"
+                            strokeWidth={2}
+                            style={{ cursor: 'nwse-resize' }}
+                        />
+                    </>
+                )}
 
-                {/* In-progress stroke (local only, for immediate feedback) */}
+                {/* Committed strokes */}
+                {initialStrokes.map((stroke, index) => {
+                    const rawStroke = getStroke(stroke.points, {
+                        size: stroke.width,
+                        thinning: 0.5,
+                        smoothing: 0.5,
+                        streamline: 0.5,
+                    })
+                    const pathData = getSvgPathFromStroke(rawStroke)
+                    return (
+                        <path
+                            key={stroke.id || index}
+                            d={pathData}
+                            fill={stroke.color}
+                            data-stroke-id={stroke.id || undefined}
+                            style={{
+                                pointerEvents: eraserMode ? 'visiblePainted' : 'none'
+                            }}
+                        />
+                    )
+                })}
+
+                {/* Partner's active stroke */}
+                {partnerStroke && (() => {
+                    const rawStroke = getStroke(partnerStroke.points, {
+                        size: partnerStroke.width,
+                        thinning: 0.5,
+                        smoothing: 0.5,
+                        streamline: 0.5,
+                    })
+                    const pathData = getSvgPathFromStroke(rawStroke)
+                    return <path d={pathData} fill={partnerStroke.color} opacity={0.5} style={{ pointerEvents: 'none' }} />
+                })()}
+
+                {/* In-progress stroke */}
                 {currentStrokePath && (
-                    <path d={currentStrokePath} fill={color} opacity={0.85} />
+                    <path d={currentStrokePath} fill={color} opacity={0.85} style={{ pointerEvents: 'none' }} />
                 )}
             </svg>
         </div>

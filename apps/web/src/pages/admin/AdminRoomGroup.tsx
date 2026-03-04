@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ArrowLeft, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Check } from "lucide-react"
+import { ArrowLeft, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Check, Clock, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
@@ -26,20 +28,37 @@ export default function AdminRoomGroup() {
     const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([])
     const [isSavingQuestions, setIsSavingQuestions] = useState(false)
 
+    // User map: player_id → admin_alias (Feature 4)
+    const [userMap, setUserMap] = useState<Record<string, string>>({})
+
+    // Time limit state (Feature 1)
+    const [groupTimeLimit, setGroupTimeLimit] = useState<number | null>(null)
+    const [isTimeLimitOpen, setIsTimeLimitOpen] = useState(false)
+    const [timeLimitInput, setTimeLimitInput] = useState("")
+    const [isSavingTimeLimit, setIsSavingTimeLimit] = useState(false)
+
+    // Room edit state (Feature 3)
+    const [editingRoom, setEditingRoom] = useState<RoomRow | null>(null)
+    const [editCode, setEditCode] = useState("")
+    const [editP1Alias, setEditP1Alias] = useState("")
+    const [editP2Alias, setEditP2Alias] = useState("")
+    const [isSavingEdit, setIsSavingEdit] = useState(false)
+
     const fetchGroupData = async () => {
         if (!groupId) return
 
         logger.info(`Admin fetching rooms for group: ${groupId}`)
-        // Fetch group info (including newly added question_ids)
+        // Fetch group info (including question_ids and time_limit)
         const { data: groupData } = await (supabase as any)
             .from('room_groups')
-            .select('name, question_ids')
+            .select('name, question_ids, time_limit')
             .eq('id', groupId)
             .single()
 
         if (groupData) {
             setGroupName(groupData.name)
             setGroupQuestionIds(groupData.question_ids || [])
+            setGroupTimeLimit(groupData.time_limit ?? null)
         }
 
         // Fetch rooms
@@ -51,7 +70,22 @@ export default function AdminRoomGroup() {
 
         if (data) {
             logger.info(`Admin fetched ${data.length} rooms successfully.`)
-            setRooms(data as RoomRow[])
+            const roomsData = data as RoomRow[]
+            setRooms(roomsData)
+
+            // Fetch user aliases for all players
+            const allUserIds = roomsData.flatMap(r => [r.player1_id, r.player2_id]).filter(Boolean) as string[]
+            if (allUserIds.length > 0) {
+                const { data: usersData } = await (supabase as any)
+                    .from('users')
+                    .select('id, admin_alias')
+                    .in('id', allUserIds)
+                const map: Record<string, string> = {}
+                if (usersData) {
+                    usersData.forEach((u: any) => { map[u.id] = u.admin_alias })
+                }
+                setUserMap(map)
+            }
         }
     }
 
@@ -181,6 +215,79 @@ export default function AdminRoomGroup() {
         }
     }
 
+    // Feature 1: Save time limit
+    const handleSaveTimeLimit = async () => {
+        setIsSavingTimeLimit(true)
+        try {
+            const value = timeLimitInput.trim() === '' ? null : parseInt(timeLimitInput, 10)
+            if (value !== null && (isNaN(value) || value < 10 || value > 600)) {
+                alert("시간은 10~600초 사이로 입력하거나, 비워두면 문제별 설정을 사용합니다.")
+                return
+            }
+            await (supabase as any).from('room_groups').update({ time_limit: value }).eq('id', groupId)
+            setGroupTimeLimit(value)
+            setIsTimeLimitOpen(false)
+        } catch (err) {
+            console.error(err)
+            alert("저장 중 오류가 발생했습니다.")
+        } finally {
+            setIsSavingTimeLimit(false)
+        }
+    }
+
+    // Feature 3: Save room edit
+    const handleSaveEdit = async () => {
+        if (!editingRoom) return
+        setIsSavingEdit(true)
+        try {
+            // Update room code
+            await (supabase as any).from('rooms').update({ code: editCode.trim() }).eq('id', editingRoom.id)
+
+            // Update player aliases
+            if (editingRoom.player1_id) {
+                await (supabase as any).from('users').update({ admin_alias: editP1Alias.trim() }).eq('id', editingRoom.player1_id)
+            }
+            if (editingRoom.player2_id) {
+                await (supabase as any).from('users').update({ admin_alias: editP2Alias.trim() }).eq('id', editingRoom.player2_id)
+            }
+
+            // Update local state immediately
+            setRooms(prev => prev.map(r => r.id === editingRoom.id ? { ...r, code: editCode.trim() } : r))
+            setUserMap(prev => {
+                const next = { ...prev }
+                if (editingRoom.player1_id) next[editingRoom.player1_id] = editP1Alias.trim()
+                if (editingRoom.player2_id) next[editingRoom.player2_id] = editP2Alias.trim()
+                return next
+            })
+            setEditingRoom(null)
+        } catch (err) {
+            console.error(err)
+            alert("저장 중 오류가 발생했습니다.")
+        } finally {
+            setIsSavingEdit(false)
+        }
+    }
+
+    // Feature 5: Download access codes
+    const handleDownloadCodes = () => {
+        if (rooms.length === 0) {
+            alert("다운로드할 방이 없습니다.")
+            return
+        }
+        const excelRows = rooms.map(room => ({
+            '방 식별자': room.code || '-',
+            'P1 이름': userMap[room.player1_id || ''] || '-',
+            'P1 접속코드': room.player1_invite_code || '-',
+            'P2 이름': userMap[room.player2_id || ''] || '-',
+            'P2 접속코드': room.player2_invite_code || '-',
+        }))
+        const ws = XLSX.utils.json_to_sheet(excelRows)
+        const wb = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(wb, ws, '접속코드')
+        const fileName = `${groupName}_접속코드_${new Date().toISOString().slice(0, 10)}.xlsx`
+        XLSX.writeFile(wb, fileName)
+    }
+
     const handleDownloadResults = async () => {
         if (rooms.length === 0) {
             alert("다운로드할 세션이 없습니다.")
@@ -251,10 +358,37 @@ export default function AdminRoomGroup() {
                 }
             }
 
-            // 4. Export with XLSX
+            // 4. Export with XLSX — Sheet1: 결과
             const ws = XLSX.utils.json_to_sheet(excelRows)
             const wb = XLSX.utils.book_new()
             XLSX.utils.book_append_sheet(wb, ws, '결과')
+
+            // 5. Sheet2: 게임 로그 (turns_log)
+            try {
+                const { data: logsData } = await (supabase as any)
+                    .from('turns_log')
+                    .select('*')
+                    .in('room_id', roomIds)
+                    .order('created_at', { ascending: true })
+
+                if (logsData && logsData.length > 0) {
+                    const logRows = logsData.map((log: any) => {
+                        const room = rooms.find(r => r.id === log.room_id)
+                        return {
+                            '방 식별자': room?.code || '-',
+                            '플레이어': userMap[log.player_id] || log.player_id || '-',
+                            '이벤트 유형': log.event_type,
+                            '메타데이터(JSON)': JSON.stringify(log.metadata),
+                            '발생 시각': log.created_at,
+                        }
+                    })
+                    const ws2 = XLSX.utils.json_to_sheet(logRows)
+                    XLSX.utils.book_append_sheet(wb, ws2, '게임 로그')
+                }
+            } catch (logErr) {
+                logger.error("turns_log 조회 실패 (Sheet2 생략):", logErr)
+            }
+
             const fileName = `${groupName}_결과_${new Date().toISOString().slice(0, 10)}.xlsx`
             XLSX.writeFile(wb, fileName)
             logger.info(`Downloaded results: ${fileName}`)
@@ -295,7 +429,18 @@ export default function AdminRoomGroup() {
                         <p className="text-2xl font-bold text-green-600">{rooms.filter(r => r.status === 'completed').length}</p>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
+                    <Button variant="outline" className="gap-2" onClick={() => {
+                        setTimeLimitInput(groupTimeLimit !== null ? String(groupTimeLimit) : '')
+                        setIsTimeLimitOpen(true)
+                    }}>
+                        <Clock className="w-4 h-4" />
+                        {groupTimeLimit !== null ? `턴 시간: ${groupTimeLimit}초` : '턴 시간 설정'}
+                    </Button>
+                    <Button variant="outline" className="gap-2" onClick={handleDownloadCodes}>
+                        <Download className="w-4 h-4" />
+                        접속코드 다운로드
+                    </Button>
                     <Button variant="outline" className="gap-2" onClick={handleDownloadResults}>
                         <Download className="w-4 h-4" />
                         엑셀 결과 다운로드
@@ -339,7 +484,6 @@ export default function AdminRoomGroup() {
                             <TableHead>Player 2 접속코드</TableHead>
                             <TableHead>상태</TableHead>
                             <TableHead>진행 단계</TableHead>
-                            <TableHead>참가자 현황</TableHead>
                             <TableHead>현재 턴 시간</TableHead>
                             <TableHead className="text-right">액션</TableHead>
                         </TableRow>
@@ -348,8 +492,18 @@ export default function AdminRoomGroup() {
                         {rooms.map((room) => (
                             <TableRow key={room.id}>
                                 <TableCell className="font-medium">{room.code || '-'}</TableCell>
-                                <TableCell className="font-mono text-lg text-primary">{room.player1_invite_code}</TableCell>
-                                <TableCell className="font-mono text-lg text-blue-600">{room.player2_invite_code}</TableCell>
+                                <TableCell>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-muted-foreground">{userMap[room.player1_id || ''] || '-'}</span>
+                                        <span className="font-mono text-lg text-primary">{room.player1_invite_code}</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-muted-foreground">{userMap[room.player2_id || ''] || '-'}</span>
+                                        <span className="font-mono text-lg text-blue-600">{room.player2_invite_code}</span>
+                                    </div>
+                                </TableCell>
                                 <TableCell>
                                     {room.status === "completed" && <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-100">완료</Badge>}
                                     {room.status === "playing" && <Badge className="bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20">진행중</Badge>}
@@ -359,22 +513,20 @@ export default function AdminRoomGroup() {
                                     {room.current_question_index + 1} / {groupQuestionIds.length > 0 ? groupQuestionIds.length : '-'}
                                 </TableCell>
                                 <TableCell>
-                                    <div className="flex flex-col gap-1 text-sm">
-                                        <span className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-red-500"></span> {room.player1_id ? 'P1 배정완료' : '대기중'}
-                                        </span>
-                                        <span className="flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span> {room.player2_id ? 'P2 배정완료' : '대기중'}
-                                        </span>
-                                    </div>
-                                </TableCell>
-                                <TableCell>
                                     <span className={room.status === 'playing' ? 'text-primary font-medium' : 'text-muted-foreground'}>
                                         {room.status === 'completed' ? '완료됨' : '대기중 혹은 진행'}
                                     </span>
                                 </TableCell>
                                 <TableCell className="text-right">
-                                    <div className="flex justify-end gap-2">
+                                    <div className="flex justify-end gap-1">
+                                        <Button variant="ghost" size="sm" onClick={() => {
+                                            setEditingRoom(room)
+                                            setEditCode(room.code || '')
+                                            setEditP1Alias(userMap[room.player1_id || ''] || '')
+                                            setEditP2Alias(userMap[room.player2_id || ''] || '')
+                                        }}>
+                                            <Pencil className="w-4 h-4" />
+                                        </Button>
                                         <Link to={`/admin/recap/${room.id}`}>
                                             <Button variant="ghost" size="sm">
                                                 {room.status === "completed" ? "리캡 보기" : "실시간 관전"}
@@ -390,6 +542,71 @@ export default function AdminRoomGroup() {
                     </TableBody>
                 </Table>
             </div>
+
+            {/* Time Limit Dialog (Feature 1) */}
+            <Dialog open={isTimeLimitOpen} onOpenChange={setIsTimeLimitOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>세션 턴 시간 설정</DialogTitle>
+                        <DialogDescription>
+                            이 세션의 모든 문제에 적용할 턴 시간(초)을 설정합니다. 비워두면 문제별 기본 시간이 사용됩니다.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="timeLimit">턴 시간 (초)</Label>
+                            <Input
+                                id="timeLimit"
+                                type="number"
+                                min={10}
+                                max={600}
+                                placeholder="비우면 문제별 설정 사용"
+                                value={timeLimitInput}
+                                onChange={e => setTimeLimitInput(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">10~600초, 비우면 NULL(문제별 default_time_limit 사용)</p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsTimeLimitOpen(false)}>취소</Button>
+                        <Button onClick={handleSaveTimeLimit} disabled={isSavingTimeLimit}>
+                            {isSavingTimeLimit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            저장
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Room Edit Dialog (Feature 3) */}
+            <Dialog open={!!editingRoom} onOpenChange={(open) => { if (!open) setEditingRoom(null) }}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>방 정보 수정</DialogTitle>
+                        <DialogDescription>방 식별자와 플레이어 이름을 수정합니다.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="editCode">방 식별자 (조 이름)</Label>
+                            <Input id="editCode" value={editCode} onChange={e => setEditCode(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="editP1">Player 1 이름</Label>
+                            <Input id="editP1" value={editP1Alias} onChange={e => setEditP1Alias(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="editP2">Player 2 이름</Label>
+                            <Input id="editP2" value={editP2Alias} onChange={e => setEditP2Alias(e.target.value)} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setEditingRoom(null)}>취소</Button>
+                        <Button onClick={handleSaveEdit} disabled={isSavingEdit}>
+                            {isSavingEdit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            저장
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Question Selection Modal */}
             <Dialog open={isSelectModalOpen} onOpenChange={setIsSelectModalOpen}>

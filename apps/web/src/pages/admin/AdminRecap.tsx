@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
 import { ArrowLeft, Play, Pause, RotateCcw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { FreehandCanvas } from "@/components/canvas/FreehandCanvas"
+import { FreehandCanvas, type CanvasImage } from "@/components/canvas/FreehandCanvas"
 import { supabase } from "@/lib/supabase"
 
 export default function AdminRecap() {
@@ -14,6 +14,7 @@ export default function AdminRecap() {
     const [maxTime, setMaxTime] = useState(0)
 
     const [displayedStrokes, setDisplayedStrokes] = useState<any[]>([])
+    const [displayedImage, setDisplayedImage] = useState<CanvasImage | null>(null)
 
     // Load logs
     useEffect(() => {
@@ -49,7 +50,7 @@ export default function AdminRecap() {
                         setIsPlaying(false)
                         return maxTime
                     }
-                    return prev + 50 // Update every 50ms
+                    return prev + 50
                 })
             }, 50)
         } else {
@@ -58,12 +59,12 @@ export default function AdminRecap() {
         return () => clearInterval(timerRef.current)
     }, [isPlaying, maxTime])
 
-    // Compute displayed strokes based on currentTime
+    // Compute displayed strokes + image based on currentTime
     useEffect(() => {
         if (!logs.length) return
 
-        // We rebuild strokes from logs up to currentTime
         let currentStrokes: any[] = []
+        let currentImage: CanvasImage | null = null
 
         for (const log of logs) {
             if (log.relativeTime > currentTime) break
@@ -72,10 +73,16 @@ export default function AdminRecap() {
                 currentStrokes.push(log.payload)
             } else if (log.action_type === 'clear') {
                 currentStrokes = []
+                currentImage = null
+            } else if (log.action_type === 'erase' && log.payload?.strokeId) {
+                currentStrokes = currentStrokes.filter((s: any) => s.id !== log.payload.strokeId)
+            } else if (log.action_type === 'place_image' && log.payload) {
+                currentImage = log.payload as CanvasImage
             }
         }
 
         setDisplayedStrokes(currentStrokes)
+        setDisplayedImage(currentImage)
     }, [currentTime, logs])
 
     const togglePlay = () => {
@@ -108,6 +115,7 @@ export default function AdminRecap() {
                     <FreehandCanvas
                         disabled={true}
                         initialStrokes={displayedStrokes}
+                        canvasImage={displayedImage}
                     />
                 </div>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy } from "lucide-react"
+import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,10 +9,11 @@ import { useRoomStore } from "@/store/roomStore"
 export default function MainGame() {
     const {
         room, isPlayer1, playerId, questions,
-        strokes, addStroke, clearStrokes,
+        strokes, addStroke, eraseStroke, clearStrokes,
         partnerActiveStroke, updateActiveStroke,
         isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn,
-        lastAnswerResult, clearAnswerResult
+        lastAnswerResult, clearAnswerResult,
+        canvasImage, placeImage, updateImage
     } = useRoomStore()
 
     // Turn State
@@ -22,7 +23,11 @@ export default function MainGame() {
 
     const [timeLeft, setTimeLeft] = useState(room?.turn_state ? (turnState.timeLeft || 60) : 60)
 
-    // Answer feedback — driven by store (so BOTH players see it)
+    // Canvas tool modes
+    const [eraserMode, setEraserMode] = useState(false)
+    const [imageEditMode, setImageEditMode] = useState(false)
+
+    // Answer feedback
     useEffect(() => {
         if (lastAnswerResult) {
             const t = setTimeout(() => clearAnswerResult(), 3000)
@@ -37,7 +42,7 @@ export default function MainGame() {
     const totalQuestions = questions.length || 0
 
     // Canvas State
-    const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#3b82f6")
+    const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#5386E4")
     const [width, setWidth] = useState(6)
 
     // Guard to prevent double-firing endTurn
@@ -49,20 +54,27 @@ export default function MainGame() {
         try {
             await endTurn(reason)
         } finally {
-            // Reset after a delay so turn switch has time to propagate
             setTimeout(() => { isEndingTurnRef.current = false }, 2000)
         }
     }
 
-    // Timer countdown — only the current player drives the clock
+    // Auto-disable eraser/image mode when selecting color/width
+    const handleColorSelect = (c: string) => {
+        setColor(c)
+        setEraserMode(false)
+        setImageEditMode(false)
+    }
+    const handleWidthSelect = (w: number) => {
+        setWidth(w)
+        setEraserMode(false)
+        setImageEditMode(false)
+    }
+
+    // Timer countdown
     useEffect(() => {
         if (turnState?.isPaused || !isMyTurn || timeLeft <= 0) return
-
         const timer = setInterval(() => {
-            setTimeLeft((prev: number) => {
-                const next = prev - 1
-                return next
-            })
+            setTimeLeft((prev: number) => prev - 1)
         }, 1000)
         return () => clearInterval(timer)
     }, [turnState?.isPaused, isMyTurn, timeLeft])
@@ -81,7 +93,7 @@ export default function MainGame() {
         }
     }, [turnState?.currentPlayerId, currentQuestionIndex, turnState?.timeLeft])
 
-    // ── Game Completed Screen ─────────────────────────────────────────────────
+    // Game Completed Screen
     if (room?.status === 'completed') {
         return (
             <div className="flex h-screen w-full bg-background items-center justify-center">
@@ -249,11 +261,11 @@ export default function MainGame() {
                 {/* Floating Toolbar */}
                 <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-2 bg-card border rounded-full shadow-lg ${!isMyTurn && 'opacity-50 pointer-events-none'}`}>
                     <div className="flex items-center gap-1 px-2 border-r pr-4">
-                        {["#F45B69", "#22181C", "#3b82f6", "#10b981", "#f59e0b"].map((c) => (
+                        {["#F45B69", "#22181C", "#5386E4", "#63A375", "#f59e0b"].map((c) => (
                             <button
                                 key={c}
-                                onClick={() => setColor(c)}
-                                className={`w-8 h-8 rounded-full border-2 transition-transform ${color === c ? 'scale-110 border-foreground shadow-md' : 'border-transparent hover:scale-105'}`}
+                                onClick={() => handleColorSelect(c)}
+                                className={`w-8 h-8 rounded-full border-2 transition-transform ${color === c && !eraserMode && !imageEditMode ? 'scale-110 border-foreground shadow-md' : 'border-transparent hover:scale-105'}`}
                                 style={{ backgroundColor: c }}
                             />
                         ))}
@@ -262,14 +274,41 @@ export default function MainGame() {
                         {[2, 6, 12].map((w) => (
                             <button
                                 key={w}
-                                onClick={() => setWidth(w)}
-                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${width === w ? 'bg-muted' : 'hover:bg-muted/50'}`}
+                                onClick={() => handleWidthSelect(w)}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${width === w && !eraserMode && !imageEditMode ? 'bg-muted' : 'hover:bg-muted/50'}`}
                             >
                                 <div className="bg-foreground rounded-full" style={{ width: w + 2, height: w + 2 }} />
                             </button>
                         ))}
                     </div>
                     <div className="flex items-center gap-2 pl-2 pr-2">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`rounded-full ${eraserMode ? 'bg-primary/15 text-primary ring-2 ring-primary/30' : 'hover:bg-muted/50'}`}
+                            onClick={() => {
+                                setEraserMode(!eraserMode)
+                                setImageEditMode(false)
+                            }}
+                        >
+                            <Eraser className="w-5 h-5" />
+                        </Button>
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`rounded-full ${imageEditMode ? 'bg-blue-500/15 text-blue-600 ring-2 ring-blue-500/30' : 'hover:bg-muted/50'}`}
+                            onClick={() => {
+                                if (!canvasImage && currentQuestionObj?.image_url) {
+                                    placeImage(currentQuestionObj.image_url)
+                                    setImageEditMode(true)
+                                } else {
+                                    setImageEditMode(!imageEditMode)
+                                }
+                                setEraserMode(false)
+                            }}
+                        >
+                            <ImageIcon className="w-5 h-5" />
+                        </Button>
                         <Button variant="ghost" size="icon" className="rounded-full hover:bg-destructive/10 hover:text-destructive" onClick={() => clearStrokes()}>
                             <Trash2 className="w-5 h-5" />
                         </Button>
@@ -290,6 +329,12 @@ export default function MainGame() {
                                 updateActiveStroke(null)
                                 addStroke(s)
                             }}
+                            eraserMode={eraserMode}
+                            onEraseStroke={(id) => eraseStroke(id)}
+                            canvasImage={canvasImage}
+                            imageEditMode={imageEditMode}
+                            onImageUpdate={(img) => useRoomStore.setState({ canvasImage: img })}
+                            onImageUpdateEnd={(img) => updateImage(img)}
                         />
                     </div>
                 </div>

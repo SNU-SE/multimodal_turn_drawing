@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import type { Database } from '@turn-based-drawing/supabase'
 import { logger } from "@/lib/logger"
+import type { CanvasImage } from '@/components/canvas/FreehandCanvas'
 
 type RoomRow = Database['public']['Tables']['rooms']['Row']
 
@@ -24,6 +25,7 @@ interface RoomState {
     answerText: string
     isAnswering: boolean
     lastAnswerResult: { answer: string; isCorrect: boolean; questionIndex: number } | null
+    canvasImage: CanvasImage | null
 
     // Actions
     joinRoom: (code: string) => Promise<void>
@@ -33,9 +35,12 @@ interface RoomState {
 
     // Canvas Actions
     addStroke: (stroke: any) => void
+    eraseStroke: (strokeId: string) => void
     updateActiveStroke: (stroke: any | null) => void
     clearStrokes: () => void
     clearAnswerResult: () => void
+    placeImage: (url: string) => void
+    updateImage: (image: CanvasImage) => void
 
     // Turn Actions
     startAnswer: () => void
@@ -53,6 +58,9 @@ export const useRoomStore = create<RoomState>((set, get) => {
     let pollIntervalId: any = null
     let strokePollIntervalId: any = null
     let lastStrokeTimestamp: string | null = null
+    let groupTimeLimit: number | null = null
+
+    const resolveTimeLimit = (qDefault?: number) => groupTimeLimit ?? qDefault ?? 60
 
     // ── Fire-and-forget broadcast (best effort, no ack) ──
     const trySend = (event: string, payload: any) => {
@@ -130,22 +138,43 @@ export const useRoomStore = create<RoomState>((set, get) => {
             logger.info(`[poll:strokes] 새 획 ${data.length}개 수신`)
 
             const newStrokes: any[] = []
+            const eraseIds = new Set<string>()
             let shouldClear = false
+            let latestImage: CanvasImage | null | undefined = undefined
 
             for (const log of data) {
                 if (log.action_type === 'clear') {
                     shouldClear = true
                     newStrokes.length = 0
+                    eraseIds.clear()
+                    latestImage = null
                 } else if (log.action_type === 'draw_path' && log.payload) {
                     newStrokes.push(log.payload)
+                } else if (log.action_type === 'erase' && log.payload?.strokeId) {
+                    eraseIds.add(log.payload.strokeId)
+                } else if (log.action_type === 'place_image' && log.payload) {
+                    latestImage = log.payload as CanvasImage
                 }
                 lastStrokeTimestamp = log.timestamp
             }
 
             if (shouldClear) {
-                set(() => ({ strokes: [...newStrokes] }))
-            } else if (newStrokes.length > 0) {
-                set((state) => ({ strokes: [...state.strokes, ...newStrokes] }))
+                const updates: any = { strokes: [...newStrokes] }
+                if (latestImage !== undefined) updates.canvasImage = latestImage
+                set(() => updates)
+            } else {
+                set((state) => {
+                    let strokes = state.strokes
+                    if (eraseIds.size > 0) {
+                        strokes = strokes.filter((s: any) => !eraseIds.has(s.id))
+                    }
+                    if (newStrokes.length > 0) {
+                        strokes = [...strokes, ...newStrokes]
+                    }
+                    const updates: any = { strokes }
+                    if (latestImage !== undefined) updates.canvasImage = latestImage
+                    return updates
+                })
             }
         }, 2000)
     }
@@ -171,6 +200,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         answerText: "",
         isAnswering: false,
         lastAnswerResult: null,
+        canvasImage: null,
         questions: [],
 
         joinRoom: async (code: string) => {
@@ -213,21 +243,27 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 let questions = qData?.map((q: any) => q.questions).filter(Boolean) || []
                 logger.info(`[joinRoom] 문제 ${questions.length}개 로드`)
 
-                if (questions.length === 0 && room.group_id) {
-                    logger.warn('[joinRoom] room_questions 없음, 그룹 fallback 시도')
-                    const { data: groupData } = await (supabase as any)
+                // Fetch group time_limit
+                if (room.group_id) {
+                    const { data: groupInfo } = await (supabase as any)
                         .from('room_groups')
-                        .select('question_ids')
+                        .select('question_ids, time_limit')
                         .eq('id', room.group_id)
                         .single()
 
-                    if (groupData?.question_ids?.length > 0) {
-                        const { data: fallbackQData } = await (supabase as any)
-                            .from('questions')
-                            .select('*')
-                            .in('id', groupData.question_ids)
-                        questions = fallbackQData || []
-                        logger.info(`[joinRoom] fallback 문제 ${questions.length}개 로드`)
+                    if (groupInfo) {
+                        groupTimeLimit = groupInfo.time_limit ?? null
+                        logger.info('[joinRoom] 그룹 시간 제한:', groupTimeLimit)
+
+                        if (questions.length === 0 && groupInfo.question_ids?.length > 0) {
+                            logger.warn('[joinRoom] room_questions 없음, 그룹 fallback 시도')
+                            const { data: fallbackQData } = await (supabase as any)
+                                .from('questions')
+                                .select('*')
+                                .in('id', groupInfo.question_ids)
+                            questions = fallbackQData || []
+                            logger.info(`[joinRoom] fallback 문제 ${questions.length}개 로드`)
+                        }
                     }
                 }
 
@@ -239,12 +275,19 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     .order('timestamp', { ascending: true })
 
                 const existingStrokes: any[] = []
+                let existingImage: CanvasImage | null = null
                 if (existingLogs) {
                     for (const log of existingLogs) {
                         if (log.action_type === 'clear') {
                             existingStrokes.length = 0
+                            existingImage = null
                         } else if (log.action_type === 'draw_path' && log.payload) {
                             existingStrokes.push(log.payload)
+                        } else if (log.action_type === 'erase' && log.payload?.strokeId) {
+                            const idx = existingStrokes.findIndex((s: any) => s.id === log.payload.strokeId)
+                            if (idx !== -1) existingStrokes.splice(idx, 1)
+                        } else if (log.action_type === 'place_image' && log.payload) {
+                            existingImage = log.payload as CanvasImage
                         }
                         lastStrokeTimestamp = log.timestamp
                     }
@@ -254,7 +297,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 set({
                     room, roomId: room.id, playerId: assignedPlayerId,
                     isPlayer1, isConnected: true, questions,
-                    strokes: existingStrokes
+                    strokes: existingStrokes, canvasImage: existingImage
                 })
 
                 // ── Realtime 채널 (best-effort broadcast + Postgres Changes) ──
@@ -285,7 +328,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                         logger.info('[Presence] 양쪽 준비 완료! 게임 시작')
                         const currentRoom = get().room!
                         const currentQuestions = get().questions
-                        const initialTimeLeft = currentQuestions[0]?.default_time_limit || 60
+                        const initialTimeLeft = resolveTimeLimit(currentQuestions[0]?.default_time_limit)
                         const payload = {
                             status: 'playing' as const,
                             turn_state: {
@@ -313,9 +356,21 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 channel.on('broadcast', { event: 'active_stroke' }, (msg) => {
                     if (msg.payload?.stroke !== undefined) set({ partnerActiveStroke: msg.payload.stroke })
                 })
+                channel.on('broadcast', { event: 'erase' }, (msg) => {
+                    logger.info('[수신:broadcast] erase')
+                    if (msg.payload?.strokeId) {
+                        set((state) => ({ strokes: state.strokes.filter((s: any) => s.id !== msg.payload.strokeId) }))
+                    }
+                })
                 channel.on('broadcast', { event: 'clear' }, () => {
                     logger.info('[수신:broadcast] clear')
-                    set({ strokes: [] })
+                    set({ strokes: [], canvasImage: null })
+                })
+                channel.on('broadcast', { event: 'place_image' }, (msg) => {
+                    logger.info('[수신:broadcast] place_image')
+                    if (msg.payload?.image) {
+                        set({ canvasImage: msg.payload.image })
+                    }
                 })
                 channel.on('broadcast', { event: 'typing' }, (msg) => {
                     if (msg.payload) set({ isAnswering: msg.payload.isAnswering, answerText: msg.payload.text || "" })
@@ -363,7 +418,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
             if (channel) supabase.removeChannel(channel)
             channel = null
             lastStrokeTimestamp = null
-            set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null })
+            groupTimeLimit = null
+            set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null, canvasImage: null })
         },
 
         toggleReady: () => {
@@ -379,11 +435,13 @@ export const useRoomStore = create<RoomState>((set, get) => {
         },
 
         addStroke: (stroke: any) => {
-            set((state) => ({ strokes: [...state.strokes, stroke] }))
+            const id = crypto.randomUUID()
+            const strokeWithId = { ...stroke, id }
+            set((state) => ({ strokes: [...state.strokes, strokeWithId] }))
             const { roomId, playerId } = get()
-            logger.info('[addStroke] 획 추가, 포인트:', stroke?.points?.length)
+            logger.info('[addStroke] 획 추가, 포인트:', stroke?.points?.length, 'id:', id)
 
-            trySend('stroke', { stroke })
+            trySend('stroke', { stroke: strokeWithId })
 
             // DB 저장 (polling이 이걸 읽어감)
             if (roomId && playerId) {
@@ -391,9 +449,28 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     room_id: roomId,
                     player_id: playerId,
                     action_type: 'draw_path',
-                    payload: stroke as any
+                    payload: strokeWithId as any
                 } as any).then(({ error }) => {
                     if (error) logger.error('[addStroke] DB 저장 실패:', error)
+                })
+            }
+        },
+
+        eraseStroke: (strokeId: string) => {
+            logger.info('[eraseStroke] 획 삭제:', strokeId)
+            set((state) => ({ strokes: state.strokes.filter((s: any) => s.id !== strokeId) }))
+            const { roomId, playerId } = get()
+
+            trySend('erase', { strokeId })
+
+            if (roomId && playerId) {
+                supabase.from('canvas_logs').insert({
+                    room_id: roomId,
+                    player_id: playerId,
+                    action_type: 'erase',
+                    payload: { strokeId } as any
+                } as any).then(({ error }) => {
+                    if (error) logger.error('[eraseStroke] DB 저장 실패:', error)
                 })
             }
         },
@@ -404,7 +481,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         clearStrokes: () => {
             logger.info('[clearStrokes] 캔버스 초기화')
-            set({ strokes: [], partnerActiveStroke: null })
+            set({ strokes: [], partnerActiveStroke: null, canvasImage: null })
             const { roomId, playerId } = get()
 
             trySend('clear', {})
@@ -423,6 +500,44 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         clearAnswerResult: () => {
             set({ lastAnswerResult: null })
+        },
+
+        placeImage: (url: string) => {
+            const image: CanvasImage = { url, x: 50, y: 50, width: 300, height: 200, visible: true }
+            logger.info('[placeImage] 이미지 배치:', url)
+            set({ canvasImage: image })
+            const { roomId, playerId } = get()
+
+            trySend('place_image', { image })
+
+            if (roomId && playerId) {
+                supabase.from('canvas_logs').insert({
+                    room_id: roomId,
+                    player_id: playerId,
+                    action_type: 'place_image',
+                    payload: image as any
+                } as any).then(({ error }) => {
+                    if (error) logger.error('[placeImage] DB 저장 실패:', error)
+                })
+            }
+        },
+
+        updateImage: (image: CanvasImage) => {
+            set({ canvasImage: image })
+            const { roomId, playerId } = get()
+
+            trySend('place_image', { image })
+
+            if (roomId && playerId) {
+                supabase.from('canvas_logs').insert({
+                    room_id: roomId,
+                    player_id: playerId,
+                    action_type: 'place_image',
+                    payload: image as any
+                } as any).then(({ error }) => {
+                    if (error) logger.error('[updateImage] DB 저장 실패:', error)
+                })
+            }
         },
 
         startAnswer: () => {
@@ -532,12 +647,12 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 await (supabase as any).from('rooms').update(payload).eq('id', room.id)
                 const updatedRoom = { ...room, ...payload }
                 trySend('room_update', updatedRoom)
-                set({ room: updatedRoom, strokes: [] })
+                set({ room: updatedRoom, strokes: [], canvasImage: null })
                 return
             }
 
             const nextQuestion = questions[nextIndex]
-            const nextTimeLeft = nextQuestion?.default_time_limit || 60
+            const nextTimeLeft = resolveTimeLimit(nextQuestion?.default_time_limit)
             logger.info(`[advanceQuestion] 문제 ${nextIndex + 1}/${questions.length}으로 이동`)
 
             const payload = {
@@ -550,7 +665,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
             const updatedRoom = { ...room, ...payload }
             trySend('room_update', updatedRoom)
-            set({ room: updatedRoom, strokes: [] })
+            set({ room: updatedRoom, strokes: [], canvasImage: null })
         },
 
         endTurn: async (reason?: 'manual' | 'timer_expired') => {
@@ -560,7 +675,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const turnState = room.turn_state as any
             const nextPlayerId = room.player1_id === get().playerId ? room.player2_id : room.player1_id
             const currentQ = questions[room.current_question_index]
-            const nextTimeLeft = currentQ?.default_time_limit || 60
+            const nextTimeLeft = resolveTimeLimit(currentQ?.default_time_limit)
 
             logger.info(`[endTurn] ${reason || 'manual'} — 다음: ${nextPlayerId}`)
 

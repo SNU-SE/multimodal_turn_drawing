@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400">
+  <defs>
+    <!-- Player 1 Gradient: Vibrant Pink to Orange -->
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3366"/>
+      <stop offset="100%" stop-color="#FF9933"/>
+    </linearGradient>
+    
+    <!-- Player 2 Gradient: Vibrant Blue to Cyan -->
+    <linearGradient id="grad2" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3366FF"/>
+      <stop offset="100%" stop-color="#33CCFF"/>
+    </linearGradient>
+
+    <!-- Canvas shadow -->
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="15" stdDeviation="15" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+
+    <!-- Glowing effect -->
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="400" rx="90" fill="#1C1C28" />
+
+  <!-- Stylized App Background Canvas -->
+  <rect x="80" y="80" width="240" height="240" rx="30" fill="#28293D" filter="url(#shadow)" />
+  
+  <!-- Grid elements to represent canvas/drawing surface -->
+  <g fill="#3D3E59" opacity="0.6">
+    <circle cx="120" cy="120" r="4" />
+    <circle cx="200" cy="120" r="4" />
+    <circle cx="280" cy="120" r="4" />
+    <circle cx="120" cy="200" r="4" />
+    <circle cx="280" cy="200" r="4" />
+    <circle cx="120" cy="280" r="4" />
+    <circle cx="200" cy="280" r="4" />
+    <circle cx="280" cy="280" r="4" />
+  </g>
+
+  <!-- Player 1 Drawing Stroke (S-curve) -->
+  <path d="M 90 260 C 150 260, 250 140, 310 140" fill="none" stroke="url(#grad1)" stroke-width="32" stroke-linecap="round" filter="url(#glow)" />
+        
+  <!-- Player 2 Drawing Stroke (S-curve inverse) -->
+  <path d="M 90 140 C 150 140, 250 260, 310 260" fill="none" stroke="url(#grad2)" stroke-width="32" stroke-linecap="round" filter="url(#glow)" />
+
+  <!-- Central Real-Time Sync Indicator -->
+  <circle cx="200" cy="200" r="20" fill="#FFFFFF" filter="url(#shadow)" />
+  <circle cx="200" cy="200" r="10" fill="#1C1C28" />
+  
+  <!-- Sparkles / Details -->
+  <path d="M 330 90 L 335 105 L 350 110 L 335 115 L 330 130 L 325 115 L 310 110 L 325 105 Z" fill="#FFCC00" />
+  <path d="M 70 310 L 73 318 L 81 321 L 73 324 L 70 332 L 67 324 L 59 321 L 67 318 Z" fill="#00FFFF" />
+</svg>
