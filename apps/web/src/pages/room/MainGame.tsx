@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon } from "lucide-react"
+import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -13,13 +13,15 @@ export default function MainGame() {
         partnerActiveStroke, updateActiveStroke,
         isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn,
         lastAnswerResult, clearAnswerResult,
-        canvasImage, placeImage, updateImage
+        canvasImage, placeImage, updateImage,
+        roomQuestions, goToReviewQuestion, backToReview, fetchRoomQuestions,
     } = useRoomStore()
 
     // Turn State
     const turnState = room?.turn_state as any
     const currentPlayerId = turnState?.currentPlayerId || room?.player1_id
     const isMyTurn = currentPlayerId ? currentPlayerId === playerId : isPlayer1
+    const isReviewMode = !!(turnState?.isReviewMode)
 
     const [timeLeft, setTimeLeft] = useState(room?.turn_state ? (turnState.timeLeft || 60) : 60)
 
@@ -105,29 +107,72 @@ export default function MainGame() {
         }
     }, [turnState?.currentPlayerId, currentQuestionIndex, turnState?.timeLeft])
 
-    // Game Completed Screen
-    if (room?.status === 'completed') {
+    // Fetch room questions when game completes
+    useEffect(() => {
+        if (room?.status === 'completed') {
+            fetchRoomQuestions()
+        }
+    }, [room?.status])
+
+    // ReviewSummary Screen (completed + not in review mode)
+    if (room?.status === 'completed' && !isReviewMode) {
+        const correctCount = roomQuestions.filter(rq => rq.is_correct === true).length
+        const hasRetryable = roomQuestions.some(rq => rq.is_correct !== true)
+
         return (
             <div className="flex h-screen w-full bg-background items-center justify-center">
-                <Card className="shadow-2xl border-primary/20 max-w-lg w-full mx-4">
-                    <CardContent className="p-10 flex flex-col items-center gap-6 text-center">
-                        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-                            <Trophy className="w-10 h-10 text-primary" />
+                <Card className="shadow-2xl border-primary/20 max-w-2xl w-full mx-4">
+                    <CardContent className="p-8 flex flex-col items-center gap-6">
+                        <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                            <Trophy className="w-8 h-8 text-primary" />
                         </div>
-                        <div>
-                            <h2 className="text-3xl font-bold mb-2">모든 문제 완료!</h2>
+                        <div className="text-center">
+                            <h2 className="text-2xl font-bold mb-1">모든 문제 완료!</h2>
                             <p className="text-muted-foreground">
-                                총 {totalQuestions}문제의 턴제 드로잉이 종료되었습니다.<br />
-                                수고 많으셨습니다! 🎉
+                                총 {totalQuestions}문제 중 <span className="font-bold text-primary">{correctCount}문제</span> 정답
                             </p>
                         </div>
-                        <div className="w-full bg-muted rounded-lg p-4 text-left space-y-1">
-                            <p className="text-sm text-muted-foreground">방 코드</p>
-                            <p className="font-mono text-xl font-bold">{room.code}</p>
+
+                        {/* Question Results List */}
+                        <div className="w-full space-y-2">
+                            {questions.map((q, idx) => {
+                                const rq = roomQuestions.find(r => r.question_id === q.id)
+                                const status = rq?.is_correct === true ? 'correct' : rq?.submitted_answer ? 'wrong' : 'unanswered'
+                                const icon = status === 'correct' ? '✅' : status === 'wrong' ? '❌' : '⬜'
+
+                                return (
+                                    <div key={q.id} className={`flex items-center gap-3 p-3 rounded-lg border ${
+                                        status === 'correct' ? 'bg-green-50 border-green-200' : status === 'wrong' ? 'bg-red-50 border-red-200' : 'bg-muted/30 border-muted'
+                                    }`}>
+                                        <span className="text-lg">{icon}</span>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium truncate">
+                                                {idx + 1}. {q.content || q.title || `문제 ${idx + 1}`}
+                                            </p>
+                                            {rq?.submitted_answer && (
+                                                <p className="text-xs text-muted-foreground truncate">
+                                                    제출: {rq.submitted_answer}
+                                                </p>
+                                            )}
+                                        </div>
+                                        {status !== 'correct' && (
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => goToReviewQuestion(idx)}
+                                                className="shrink-0"
+                                            >
+                                                <RotateCcw className="w-3 h-3 mr-1" /> 재시도
+                                            </Button>
+                                        )}
+                                    </div>
+                                )
+                            })}
                         </div>
-                        <p className="text-xs text-muted-foreground">
-                            수고하셨습니다.
-                        </p>
+
+                        {!hasRetryable && (
+                            <p className="text-sm text-green-600 font-medium">모든 문제를 맞혔습니다! 축하합니다! 🎉</p>
+                        )}
                     </CardContent>
                 </Card>
             </div>
