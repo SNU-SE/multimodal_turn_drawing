@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Upload, Trash2, Loader2, Image as ImageIcon, Check, X, ClipboardPaste } from "lucide-react"
+import { Upload, Trash2, Loader2, Image as ImageIcon, Check, X, ClipboardPaste, Pencil } from "lucide-react"
 import type { Database } from "@turn-based-drawing/supabase"
 import { logger } from "@/lib/logger"
 
@@ -99,6 +99,10 @@ function ImageUploadArea({
 export default function AdminBank() {
     const [questions, setQuestions] = useState<QuestionRow[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
+    const formRef = useRef<HTMLDivElement>(null)
+
+    // Edit mode
+    const [editingId, setEditingId] = useState<string | null>(null)
 
     // Form state
     const [title, setTitle] = useState("")
@@ -146,6 +150,7 @@ export default function AdminBank() {
     }
 
     const resetForm = () => {
+        setEditingId(null)
         setTitle("")
         setContent("")
         setContentImageFile(null)
@@ -157,13 +162,35 @@ export default function AdminBank() {
         setMcAnswers([])
     }
 
+    const startEdit = (q: QuestionRow) => {
+        setEditingId(q.id)
+        setTitle(q.title || "")
+        setQType(q.question_type)
+        setContent(q.content || "")
+        setContentImageFile(null)
+        setContentImagePreview(q.content_image_url || null)
+        setImageFile(null)
+        setImagePreview(q.image_url || null)
+        if (q.question_type === 'essay') {
+            setAnswer(q.correct_answer || "")
+            setOptions(["", "", "", ""])
+            setMcAnswers([])
+        } else {
+            setAnswer("")
+            setOptions((q.options as string[]) || ["", "", "", ""])
+            setMcAnswers(q.correct_answer?.split(',') || [])
+        }
+        formRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+
     const handleSubmit = async () => {
         // Validation
         if (!title.trim()) {
             alert("문제 제목을 입력해주세요.")
             return
         }
-        if (!content.trim() && !contentImageFile) {
+        const hasContentImage = contentImageFile || (editingId && contentImagePreview)
+        if (!content.trim() && !hasContentImage) {
             alert("문항 내용(텍스트 또는 이미지)을 입력해주세요.")
             return
         }
@@ -184,19 +211,35 @@ export default function AdminBank() {
 
         setIsSubmitting(true)
         try {
-            // Upload images if present
-            let contentImageUrl: string | null = null
-            let imageUrl: string | null = null
+            const existingQuestion = editingId ? questions.find(q => q.id === editingId) : null
+
+            // Upload new images if file was changed
+            let contentImageUrl: string | null = contentImagePreview
+            let imageUrl: string | null = imagePreview
 
             if (contentImageFile) {
+                // Delete old content image if replacing
+                if (existingQuestion?.content_image_url) {
+                    await deleteStorageFile(existingQuestion.content_image_url)
+                }
                 contentImageUrl = await uploadImage(contentImageFile)
-            }
-            if (imageFile) {
-                imageUrl = await uploadImage(imageFile)
+            } else if (editingId && !contentImagePreview && existingQuestion?.content_image_url) {
+                // Image was cleared
+                await deleteStorageFile(existingQuestion.content_image_url)
+                contentImageUrl = null
             }
 
-            // Insert into DB
-            const { error: dbError } = await (supabase as any).from('questions').insert({
+            if (imageFile) {
+                if (existingQuestion?.image_url) {
+                    await deleteStorageFile(existingQuestion.image_url)
+                }
+                imageUrl = await uploadImage(imageFile)
+            } else if (editingId && !imagePreview && existingQuestion?.image_url) {
+                await deleteStorageFile(existingQuestion.image_url)
+                imageUrl = null
+            }
+
+            const payload = {
                 title: title.trim(),
                 content: content.trim() || null,
                 content_image_url: contentImageUrl,
@@ -204,16 +247,23 @@ export default function AdminBank() {
                 question_type: qType,
                 options: qType === 'multiple_choice' ? options : null,
                 correct_answer: qType === 'multiple_choice' ? mcAnswers.sort().join(',') : answer.trim(),
-            })
+            }
 
-            if (dbError) throw dbError
+            if (editingId) {
+                const { error } = await (supabase as any).from('questions').update(payload).eq('id', editingId)
+                if (error) throw error
+                alert("문제가 성공적으로 수정되었습니다.")
+            } else {
+                const { error } = await (supabase as any).from('questions').insert(payload)
+                if (error) throw error
+                alert("문제가 성공적으로 등록되었습니다.")
+            }
 
-            alert("문제가 성공적으로 등록되었습니다.")
             resetForm()
             fetchQuestions()
         } catch (err: any) {
             logger.error("Submit failed:", err)
-            alert("등록 실패: " + err.message)
+            alert((editingId ? "수정" : "등록") + " 실패: " + err.message)
         } finally {
             setIsSubmitting(false)
         }
@@ -242,9 +292,19 @@ export default function AdminBank() {
                 <p className="text-muted-foreground">턴제 드로잉에서 사용할 문제를 등록하고 관리합니다.</p>
             </div>
 
-            <Card className="bg-muted/30">
+            <Card ref={formRef} className={`bg-muted/30 ${editingId ? 'ring-2 ring-primary' : ''}`}>
                 <CardContent className="pt-6">
                     <div className="flex flex-col gap-6">
+
+                        {/* Edit mode header */}
+                        {editingId && (
+                            <div className="flex items-center justify-between bg-primary/10 -mx-6 -mt-6 px-6 py-3 rounded-t-lg">
+                                <span className="text-sm font-medium text-primary">문제 수정 중...</span>
+                                <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={resetForm}>
+                                    취소
+                                </Button>
+                            </div>
+                        )}
 
                         {/* Section 1: Title + Type */}
                         <div className="flex flex-col md:flex-row gap-4 items-end">
@@ -402,14 +462,21 @@ export default function AdminBank() {
                         </div>
 
                         {/* Submit Button */}
-                        <Button
-                            className="bg-primary gap-2 h-10 px-8 w-full md:w-auto md:self-end"
-                            onClick={handleSubmit}
-                            disabled={isSubmitting}
-                        >
-                            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                            등록
-                        </Button>
+                        <div className="flex gap-2 justify-end">
+                            {editingId && (
+                                <Button variant="outline" className="h-10 px-8" onClick={resetForm}>
+                                    취소
+                                </Button>
+                            )}
+                            <Button
+                                className="bg-primary gap-2 h-10 px-8"
+                                onClick={handleSubmit}
+                                disabled={isSubmitting}
+                            >
+                                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : editingId ? <Pencil className="w-4 h-4" /> : <Upload className="w-4 h-4" />}
+                                {editingId ? '수정' : '등록'}
+                            </Button>
+                        </div>
                     </div>
                 </CardContent>
             </Card>
@@ -434,14 +501,24 @@ export default function AdminBank() {
                                             {q.question_type === 'essay' ? '주관식' : '객관식'} | 정답: {q.question_type === 'multiple_choice' ? `${q.correct_answer}번` : q.correct_answer}
                                         </p>
                                     </div>
-                                    <Button
-                                        variant="destructive"
-                                        size="icon"
-                                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                                        onClick={() => handleDelete(q)}
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => startEdit(q)}
+                                        >
+                                            <Pencil className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => handleDelete(q)}
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                    </div>
                                 </div>
 
                                 {/* Content text */}
