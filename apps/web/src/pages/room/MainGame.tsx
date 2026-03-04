@@ -297,7 +297,7 @@ export default function MainGame() {
                 {/* Bottom Turn Actions */}
                 <div className="absolute bottom-6 right-6 z-30">
                     <Button
-                        onClick={handleEndTurn}
+                        onClick={() => handleEndTurn('manual')}
                         variant="outline"
                         className="rounded-full bg-card shadow-md border px-6 hover:text-primary transition-colors"
                         disabled={!isMyTurn || isAnswering || isEndingTurnRef.current}
