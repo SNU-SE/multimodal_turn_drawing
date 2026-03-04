@@ -58,6 +58,9 @@ interface RoomState {
     goToReviewQuestion: (questionIndex: number) => Promise<void>
     backToReview: () => Promise<void>
 
+    // Session Timer
+    sessionTimeLimit: number | null
+
     // Approval System Actions
     requestRetry: (questionIndex: number) => Promise<void>
     requestComplete: () => Promise<void>
@@ -71,6 +74,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
     let strokePollIntervalId: any = null
     let lastStrokeTimestamp: string | null = null
     let groupTimeLimit: number | null = null
+    let sessionTimeLimit: number | null = null  // 분 단위, null/0 = 제한 없음
 
     const resolveTimeLimit = (qDefault?: number) => groupTimeLimit ?? qDefault ?? 60
 
@@ -215,6 +219,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         canvasImage: null,
         questions: [],
         roomQuestions: [],
+        sessionTimeLimit: null,
 
         joinRoom: async (code: string) => {
             logger.info('[joinRoom] 입장 시도:', code)
@@ -265,13 +270,14 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 if (room.group_id) {
                     const { data: groupInfo } = await (supabase as any)
                         .from('room_groups')
-                        .select('question_ids, time_limit')
+                        .select('question_ids, time_limit, session_time_limit')
                         .eq('id', room.group_id)
                         .single()
 
                     if (groupInfo) {
                         groupTimeLimit = groupInfo.time_limit ?? null
-                        logger.info('[joinRoom] 그룹 시간 제한:', groupTimeLimit)
+                        sessionTimeLimit = groupInfo.session_time_limit ?? null
+                        logger.info('[joinRoom] 그룹 시간 제한:', groupTimeLimit, '세션 시간 제한:', sessionTimeLimit)
 
                         if (questions.length === 0 && groupInfo.question_ids?.length > 0) {
                             logger.warn('[joinRoom] room_questions 없음, 그룹 fallback 시도')
@@ -315,7 +321,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 set({
                     room, roomId: room.id, playerId: assignedPlayerId,
                     isPlayer1, isConnected: true, questions, roomQuestions,
-                    strokes: existingStrokes, canvasImage: existingImage
+                    strokes: existingStrokes, canvasImage: existingImage,
+                    sessionTimeLimit,
                 })
 
                 // ── Realtime 채널 (best-effort broadcast + Postgres Changes) ──
@@ -352,7 +359,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
                             turn_state: {
                                 currentPlayerId: currentRoom.player1_id,
                                 timeLeft: initialTimeLeft,
-                                isPaused: false
+                                isPaused: false,
+                                sessionStartedAt: new Date().toISOString(),
                             }
                         };
                         (supabase as any).from('rooms').update(payload).eq('id', currentRoom.id).then(() => {
@@ -437,7 +445,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
             channel = null
             lastStrokeTimestamp = null
             groupTimeLimit = null
-            set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null, canvasImage: null, roomQuestions: [] })
+            sessionTimeLimit = null
+            set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null, canvasImage: null, roomQuestions: [], sessionTimeLimit: null })
         },
 
         toggleReady: () => {

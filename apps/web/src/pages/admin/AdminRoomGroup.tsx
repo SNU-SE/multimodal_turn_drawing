@@ -37,6 +37,12 @@ export default function AdminRoomGroup() {
     const [timeLimitInput, setTimeLimitInput] = useState("")
     const [isSavingTimeLimit, setIsSavingTimeLimit] = useState(false)
 
+    // Session time limit state
+    const [sessionTimeLimit, setSessionTimeLimit] = useState<number | null>(null)
+    const [isSessionTimeLimitOpen, setIsSessionTimeLimitOpen] = useState(false)
+    const [sessionTimeLimitInput, setSessionTimeLimitInput] = useState("")
+    const [isSavingSessionTimeLimit, setIsSavingSessionTimeLimit] = useState(false)
+
     // Room edit state (Feature 3)
     const [editingRoom, setEditingRoom] = useState<RoomRow | null>(null)
     const [editCode, setEditCode] = useState("")
@@ -58,7 +64,7 @@ export default function AdminRoomGroup() {
         // Fetch group info (including question_ids and time_limit)
         const { data: groupData } = await (supabase as any)
             .from('room_groups')
-            .select('name, question_ids, time_limit')
+            .select('name, question_ids, time_limit, session_time_limit')
             .eq('id', groupId)
             .single()
 
@@ -66,6 +72,7 @@ export default function AdminRoomGroup() {
             setGroupName(groupData.name)
             setGroupQuestionIds(groupData.question_ids || [])
             setGroupTimeLimit(groupData.time_limit ?? null)
+            setSessionTimeLimit(groupData.session_time_limit ?? null)
         }
 
         // Fetch rooms
@@ -267,6 +274,27 @@ export default function AdminRoomGroup() {
             alert("저장 중 오류가 발생했습니다.")
         } finally {
             setIsSavingTimeLimit(false)
+        }
+    }
+
+    // Save session time limit
+    const handleSaveSessionTimeLimit = async () => {
+        setIsSavingSessionTimeLimit(true)
+        try {
+            const value = sessionTimeLimitInput.trim() === '' ? null : parseInt(sessionTimeLimitInput, 10)
+            if (value !== null && (isNaN(value) || value < 0)) {
+                alert("0 이상의 숫자를 입력하세요. 0 또는 비우면 제한 없음.")
+                return
+            }
+            const dbValue = (value === 0) ? null : value
+            await (supabase as any).from('room_groups').update({ session_time_limit: dbValue }).eq('id', groupId)
+            setSessionTimeLimit(dbValue)
+            setIsSessionTimeLimitOpen(false)
+        } catch (err) {
+            console.error(err)
+            alert("저장 중 오류가 발생했습니다.")
+        } finally {
+            setIsSavingSessionTimeLimit(false)
         }
     }
 
@@ -522,6 +550,13 @@ export default function AdminRoomGroup() {
                             <Clock className="w-4 h-4" />
                             {groupTimeLimit !== null ? `턴 시간: ${groupTimeLimit}초` : '턴 시간 설정'}
                         </Button>
+                        <Button variant="outline" className="gap-2" onClick={() => {
+                            setSessionTimeLimitInput(sessionTimeLimit !== null ? String(sessionTimeLimit) : '')
+                            setIsSessionTimeLimitOpen(true)
+                        }}>
+                            <Clock className="w-4 h-4" />
+                            {sessionTimeLimit !== null ? `세션 시간: ${sessionTimeLimit}분` : '세션 시간 설정'}
+                        </Button>
                         <Button
                             onClick={() => {
                                 setSelectedQuestionIds(groupQuestionIds)
@@ -668,6 +703,39 @@ export default function AdminRoomGroup() {
                         <Button variant="outline" onClick={() => setIsTimeLimitOpen(false)}>취소</Button>
                         <Button onClick={handleSaveTimeLimit} disabled={isSavingTimeLimit}>
                             {isSavingTimeLimit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            저장
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Session Time Limit Dialog */}
+            <Dialog open={isSessionTimeLimitOpen} onOpenChange={setIsSessionTimeLimitOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>세션 전체 시간 설정</DialogTitle>
+                        <DialogDescription>
+                            이 세션의 전체 제한 시간(분)을 설정합니다. 0이거나 비워두면 제한 없음.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="sessionTimeLimit">세션 시간 (분)</Label>
+                            <Input
+                                id="sessionTimeLimit"
+                                type="number"
+                                min={0}
+                                placeholder="비우면 제한 없음"
+                                value={sessionTimeLimitInput}
+                                onChange={e => setSessionTimeLimitInput(e.target.value)}
+                            />
+                            <p className="text-xs text-muted-foreground">0 또는 비우면 제한 없음. 예: 30 = 30분</p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsSessionTimeLimitOpen(false)}>취소</Button>
+                        <Button onClick={handleSaveSessionTimeLimit} disabled={isSavingSessionTimeLimit}>
+                            {isSavingSessionTimeLimit && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                             저장
                         </Button>
                     </DialogFooter>

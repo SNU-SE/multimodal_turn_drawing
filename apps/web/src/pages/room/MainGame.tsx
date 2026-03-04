@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { FreehandCanvas } from "@/components/canvas/FreehandCanvas"
 import { useRoomStore } from "@/store/roomStore"
+import { supabase } from "@/lib/supabase"
 
 export default function MainGame() {
     const {
@@ -17,6 +18,7 @@ export default function MainGame() {
         canvasImage, placeImage, updateImage,
         roomQuestions, backToReview, fetchRoomQuestions,
         requestRetry, requestComplete, approveRequest, rejectRequest,
+        sessionTimeLimit,
     } = useRoomStore()
 
     const navigate = useNavigate()
@@ -58,6 +60,38 @@ export default function MainGame() {
 
     // Reset MC selection when question changes
     useEffect(() => { setMcSelected([]) }, [currentQuestionIndex])
+
+    // Session countdown
+    const sessionStartedAt = turnState?.sessionStartedAt as string | undefined
+    const hasSessionLimit = !!(sessionTimeLimit && sessionTimeLimit > 0 && sessionStartedAt)
+
+    const [sessionSecondsLeft, setSessionSecondsLeft] = useState<number | null>(null)
+
+    useEffect(() => {
+        if (!hasSessionLimit) { setSessionSecondsLeft(null); return }
+
+        const totalSeconds = sessionTimeLimit! * 60
+        const update = () => {
+            const elapsed = (Date.now() - new Date(sessionStartedAt!).getTime()) / 1000
+            const remaining = Math.max(0, Math.ceil(totalSeconds - elapsed))
+            setSessionSecondsLeft(remaining)
+        }
+        update()
+        const id = setInterval(update, 1000)
+        return () => clearInterval(id)
+    }, [hasSessionLimit, sessionTimeLimit, sessionStartedAt])
+
+    // Auto-complete when session time expires (player1 only to avoid duplicate)
+    useEffect(() => {
+        if (sessionSecondsLeft === 0 && room?.status === 'playing' && isPlayer1) {
+            ;(async () => {
+                const payload = { status: 'completed' as const }
+                await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+                const updatedRoom = { ...room, ...payload }
+                useRoomStore.getState().broadcastRoomUpdate(updatedRoom)
+            })()
+        }
+    }, [sessionSecondsLeft, room?.status, isPlayer1])
 
     // Canvas State
     const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#5386E4")
@@ -275,9 +309,26 @@ export default function MainGame() {
                 <p className="text-muted-foreground">이 플랫폼은 가로 모드(Landscape) 태블릿 및 PC에 최적화되어 있습니다. 기기를 가로로 회전해주세요.</p>
             </div>
 
-            {/* Review Mode Banner */}
+            {/* Session Countdown Bar */}
+            {hasSessionLimit && sessionSecondsLeft !== null && room?.status === 'playing' && (
+                <div className={`absolute top-0 left-0 right-0 z-[51] px-4 py-1.5 text-center border-b ${
+                    sessionSecondsLeft <= 60
+                        ? 'bg-red-100 border-red-300'
+                        : sessionSecondsLeft <= 300
+                            ? 'bg-amber-100 border-amber-300'
+                            : 'bg-blue-50 border-blue-200'
+                }`}>
+                    <span className={`text-sm font-medium tabular-nums ${
+                        sessionSecondsLeft <= 60 ? 'text-red-800 animate-pulse' : sessionSecondsLeft <= 300 ? 'text-amber-800' : 'text-blue-800'
+                    }`}>
+                        세션 남은 시간: {Math.floor(sessionSecondsLeft / 60)}분 {sessionSecondsLeft % 60}초
+                    </span>
+                </div>
+            )}
+
+            {/* Review Mode Banner - offset if session bar exists */}
             {isReviewMode && (
-                <div className="absolute top-0 left-0 right-0 z-50 bg-amber-100 border-b border-amber-300 px-4 py-2 text-center">
+                <div className={`absolute ${hasSessionLimit && room?.status === 'playing' ? 'top-9' : 'top-0'} left-0 right-0 z-50 bg-amber-100 border-b border-amber-300 px-4 py-2 text-center`}>
                     <span className="text-amber-800 text-sm font-medium">
                         재시도 중 — 이 문제를 다시 풀고 있습니다
                     </span>
