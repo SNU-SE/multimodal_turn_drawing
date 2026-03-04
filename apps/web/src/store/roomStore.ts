@@ -143,7 +143,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             }
 
             if (shouldClear) {
-                set((state) => ({ strokes: [...newStrokes] }))
+                set(() => ({ strokes: [...newStrokes] }))
             } else if (newStrokes.length > 0) {
                 set((state) => ({ strokes: [...state.strokes, ...newStrokes] }))
             }
