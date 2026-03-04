@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ArrowLeft, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Check, Clock, Pencil } from "lucide-react"
+import { ArrowLeft, ArrowUp, ArrowDown, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Check, Clock, Pencil, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -129,6 +129,18 @@ export default function AdminRoomGroup() {
         setSelectedQuestionIds(prev =>
             prev.includes(id) ? prev.filter(q => q !== id) : [...prev, id]
         )
+    }
+
+    const moveQuestion = (fromIdx: number, direction: 'up' | 'down') => {
+        const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1
+        if (toIdx < 0 || toIdx >= selectedQuestionIds.length) return
+        const next = [...selectedQuestionIds]
+        ;[next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]]
+        setSelectedQuestionIds(next)
+    }
+
+    const removeQuestion = (id: string) => {
+        setSelectedQuestionIds(prev => prev.filter(q => q !== id))
     }
 
     useEffect(() => {
@@ -654,6 +666,35 @@ export default function AdminRoomGroup() {
                         )}
                     </div>
 
+                    {/* Selected Question Order List */}
+                    {selectedQuestionIds.length > 0 && (
+                        <div className="border rounded-lg p-3 mb-2 bg-muted/30">
+                            <p className="text-xs font-semibold text-muted-foreground mb-2">출제 순서</p>
+                            <div className="space-y-1">
+                                {selectedQuestionIds.map((qId, idx) => {
+                                    const q = bankQuestions.find((b: any) => b.id === qId)
+                                    return (
+                                        <div key={qId} className="flex items-center gap-2 bg-card rounded-md px-3 py-1.5 border text-sm">
+                                            <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-xs font-bold flex items-center justify-center shrink-0">
+                                                {idx + 1}
+                                            </span>
+                                            <span className="flex-1 truncate">{q?.title || q?.correct_answer || qId}</span>
+                                            <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => moveQuestion(idx, 'up')} disabled={idx === 0}>
+                                                <ArrowUp className="w-3 h-3" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="w-6 h-6" onClick={() => moveQuestion(idx, 'down')} disabled={idx === selectedQuestionIds.length - 1}>
+                                                <ArrowDown className="w-3 h-3" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" className="w-6 h-6 text-destructive hover:bg-destructive/10" onClick={() => removeQuestion(qId)}>
+                                                <X className="w-3 h-3" />
+                                            </Button>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 py-4">
                         {bankQuestions.length === 0 && (
                             <div className="col-span-full py-8 text-center text-muted-foreground border-2 border-dashed rounded-lg">
@@ -662,6 +703,7 @@ export default function AdminRoomGroup() {
                         )}
                         {bankQuestions.map((q) => {
                             const isSelected = selectedQuestionIds.includes(q.id)
+                            const orderNum = isSelected ? selectedQuestionIds.indexOf(q.id) + 1 : 0
                             return (
                                 <div
                                     key={q.id}
@@ -677,7 +719,7 @@ export default function AdminRoomGroup() {
                                             <p className="text-xs text-muted-foreground">{q.question_type === 'essay' ? '주관식' : '객관식'}</p>
                                         </div>
                                         <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 ${isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/30'}`}>
-                                            {isSelected && <Check className="w-3 h-3" />}
+                                            {isSelected ? <span className="text-xs font-bold">{orderNum}</span> : null}
                                         </div>
                                     </div>
                                 </div>
