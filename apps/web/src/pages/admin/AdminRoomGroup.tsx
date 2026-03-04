@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { useParams, Link } from "react-router-dom"
-import { ArrowLeft, ArrowUp, ArrowDown, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Check, Clock, Pencil, X } from "lucide-react"
+import { ArrowLeft, ArrowUp, ArrowDown, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Clock, Pencil, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -43,6 +43,13 @@ export default function AdminRoomGroup() {
     const [editP1Alias, setEditP1Alias] = useState("")
     const [editP2Alias, setEditP2Alias] = useState("")
     const [isSavingEdit, setIsSavingEdit] = useState(false)
+
+    // Single room add state
+    const [isAddRoomOpen, setIsAddRoomOpen] = useState(false)
+    const [addRoomCode, setAddRoomCode] = useState("")
+    const [addP1Alias, setAddP1Alias] = useState("")
+    const [addP2Alias, setAddP2Alias] = useState("")
+    const [isAddingRoom, setIsAddingRoom] = useState(false)
 
     const fetchGroupData = async () => {
         if (!groupId) return
@@ -296,6 +303,54 @@ export default function AdminRoomGroup() {
         }
     }
 
+    // Add single room
+    const handleAddSingleRoom = async () => {
+        if (!groupId) return
+        setIsAddingRoom(true)
+        try {
+            const p1Id = crypto.randomUUID()
+            const p2Id = crypto.randomUUID()
+            const p1Code = Math.floor(100000 + Math.random() * 900000).toString()
+            const p2Code = Math.floor(100000 + Math.random() * 900000).toString()
+
+            const { error: userError } = await (supabase as any).from('users').insert([
+                { id: p1Id, admin_alias: addP1Alias.trim() || '익명1' },
+                { id: p2Id, admin_alias: addP2Alias.trim() || '익명2' }
+            ])
+            if (userError) throw userError
+
+            const { data: roomData, error: roomError } = await (supabase as any).from('rooms').insert({
+                group_id: groupId,
+                code: addRoomCode.trim() || `방-${rooms.length + 1}`,
+                player1_id: p1Id,
+                player2_id: p2Id,
+                player1_invite_code: p1Code,
+                player2_invite_code: p2Code,
+                status: 'pending'
+            }).select().single()
+            if (roomError || !roomData) throw roomError
+
+            if (groupQuestionIds.length > 0) {
+                const roomQuestions = groupQuestionIds.map((qId: string) => ({
+                    room_id: roomData.id,
+                    question_id: qId
+                }))
+                await (supabase as any).from('room_questions').insert(roomQuestions)
+            }
+
+            setIsAddRoomOpen(false)
+            setAddRoomCode("")
+            setAddP1Alias("")
+            setAddP2Alias("")
+            fetchGroupData()
+        } catch (err) {
+            console.error(err)
+            alert("방 추가 중 오류가 발생했습니다.")
+        } finally {
+            setIsAddingRoom(false)
+        }
+    }
+
     // Feature 5: Download access codes
     const handleDownloadCodes = () => {
         if (rooms.length === 0) {
@@ -478,6 +533,14 @@ export default function AdminRoomGroup() {
                         >
                             <Settings className="w-4 h-4" />
                             출제할 문제 변경 ({groupQuestionIds.length}개)
+                        </Button>
+                        <Button
+                            variant="outline"
+                            className="gap-2"
+                            onClick={() => setIsAddRoomOpen(true)}
+                        >
+                            <PlusCircle className="w-4 h-4" />
+                            방 1개 추가
                         </Button>
                         <input
                             type="file"
@@ -735,6 +798,37 @@ export default function AdminRoomGroup() {
                         >
                             {isSavingQuestions && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                             선택 문제 확정 저장
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add Single Room Dialog */}
+            <Dialog open={isAddRoomOpen} onOpenChange={setIsAddRoomOpen}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>방 1개 추가</DialogTitle>
+                        <DialogDescription>새로운 방을 수동으로 추가합니다. 접속코드는 자동 생성됩니다.</DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="addRoomCode">방 식별자 (조 이름)</Label>
+                            <Input id="addRoomCode" placeholder={`방-${rooms.length + 1}`} value={addRoomCode} onChange={e => setAddRoomCode(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="addP1">Player 1 이름</Label>
+                            <Input id="addP1" placeholder="익명1" value={addP1Alias} onChange={e => setAddP1Alias(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="addP2">Player 2 이름</Label>
+                            <Input id="addP2" placeholder="익명2" value={addP2Alias} onChange={e => setAddP2Alias(e.target.value)} />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsAddRoomOpen(false)}>취소</Button>
+                        <Button onClick={handleAddSingleRoom} disabled={isAddingRoom}>
+                            {isAddingRoom && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                            추가
                         </Button>
                     </DialogFooter>
                 </DialogContent>
