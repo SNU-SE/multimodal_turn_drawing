@@ -19,6 +19,8 @@ interface FreehandCanvasProps {
     disabled?: boolean
     // strokes is the single source of truth from the store
     initialStrokes?: Stroke[]
+    partnerStroke?: Stroke | null
+    onStrokeUpdate?: (stroke: Stroke) => void
     onStrokeEnd?: (stroke: Stroke) => void
 }
 
@@ -52,11 +54,14 @@ export function FreehandCanvas({
     width = 8,
     disabled = false,
     initialStrokes = [],
+    partnerStroke = null,
+    onStrokeUpdate,
     onStrokeEnd,
 }: FreehandCanvasProps) {
     // currentPoints: the stroke currently being drawn (local, not in store)
     const [currentPoints, setCurrentPoints] = useState<Point[]>([])
     const svgRef = useRef<SVGSVGElement>(null)
+    const lastUpdateTimeRef = useRef(0)
 
     const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled) return
@@ -72,10 +77,18 @@ export function FreehandCanvas({
     const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled || currentPoints.length === 0) return
         const bounds = e.currentTarget.getBoundingClientRect()
-        setCurrentPoints(prev => [
-            ...prev,
-            { x: e.clientX - bounds.left, y: e.clientY - bounds.top, pressure: e.pressure }
-        ])
+        const newPoint = { x: e.clientX - bounds.left, y: e.clientY - bounds.top, pressure: e.pressure }
+
+        setCurrentPoints(prev => {
+            const next = [...prev, newPoint]
+            // Throttle sending the active stroke to ~10 times per second (100ms)
+            const now = Date.now()
+            if (now - lastUpdateTimeRef.current > 100) {
+                lastUpdateTimeRef.current = now
+                onStrokeUpdate?.({ points: next, color, width })
+            }
+            return next
+        })
     }
 
     const handlePointerUp = () => {
@@ -112,6 +125,9 @@ export function FreehandCanvas({
             >
                 {/* Committed strokes from store — re-renders whenever initialStrokes reference changes */}
                 {initialStrokes.map(renderStroke)}
+
+                {/* Partner's active stroke (currently being drawn) */}
+                {partnerStroke && renderStroke(partnerStroke, -1)}
 
                 {/* In-progress stroke (local only, for immediate feedback) */}
                 {currentStrokePath && (

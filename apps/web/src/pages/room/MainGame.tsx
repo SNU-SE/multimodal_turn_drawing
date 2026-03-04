@@ -10,6 +10,7 @@ export default function MainGame() {
     const {
         room, isPlayer1, playerId, questions,
         strokes, addStroke, clearStrokes,
+        partnerActiveStroke, updateActiveStroke,
         isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn,
         lastAnswerResult, clearAnswerResult
     } = useRoomStore()
@@ -283,7 +284,12 @@ export default function MainGame() {
                             width={width}
                             disabled={!isMyTurn || isAnswering}
                             initialStrokes={strokes}
-                            onStrokeEnd={(s) => addStroke(s)}
+                            partnerStroke={partnerActiveStroke}
+                            onStrokeUpdate={(s) => updateActiveStroke(s)}
+                            onStrokeEnd={(s) => {
+                                updateActiveStroke(null)
+                                addStroke(s)
+                            }}
                         />
                     </div>
                 </div>

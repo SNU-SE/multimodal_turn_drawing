@@ -20,6 +20,7 @@ interface RoomState {
     isReady: boolean
     timeLeft: number
     strokes: any[]
+    partnerActiveStroke: any | null
     answerText: string
     isAnswering: boolean
     lastAnswerResult: { answer: string; isCorrect: boolean; questionIndex: number } | null
@@ -32,6 +33,7 @@ interface RoomState {
 
     // Canvas Actions
     addStroke: (stroke: any) => void
+    updateActiveStroke: (stroke: any | null) => void
     clearStrokes: () => void
     clearAnswerResult: () => void
 
@@ -63,6 +65,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         isReady: false,
         timeLeft: 60,
         strokes: [],
+        partnerActiveStroke: null,
         answerText: "",
         isAnswering: false,
         lastAnswerResult: null,
@@ -172,10 +175,19 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 })
 
                 // Broadcast for fast stroke syncing
+                channel.on('broadcast', { event: 'active_stroke' }, (payload) => {
+                    if (payload.payload?.stroke !== undefined) {
+                        set({ partnerActiveStroke: payload.payload.stroke })
+                    }
+                })
+
                 channel.on('broadcast', { event: 'stroke' }, (payload) => {
                     logger.debug('Received broadcast: stroke', payload.payload?.stroke?.points?.length, 'points')
                     if (payload.payload?.stroke) {
-                        set((state) => ({ strokes: [...state.strokes, payload.payload.stroke] }))
+                        set((state) => ({
+                            strokes: [...state.strokes, payload.payload.stroke],
+                            partnerActiveStroke: null
+                        }))
                     }
                 })
 
@@ -240,7 +252,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         leaveRoom: () => {
             if (channel) supabase.removeChannel(channel)
-            set({ room: null, roomId: null, isConnected: false, strokes: [], isReady: false, partnerReady: false, lastAnswerResult: null })
+            set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null })
             get().cleanup()
         },
 
@@ -287,8 +299,18 @@ export const useRoomStore = create<RoomState>((set, get) => {
             }
         },
 
+        updateActiveStroke: (stroke: any | null) => {
+            if (channel) {
+                channel.send({
+                    type: 'broadcast',
+                    event: 'active_stroke',
+                    payload: { stroke }
+                })
+            }
+        },
+
         clearStrokes: () => {
-            set({ strokes: [] })
+            set({ strokes: [], partnerActiveStroke: null })
 
             const { roomId, playerId } = get()
 
