@@ -31,18 +31,21 @@ export interface Database {
                     id: string
                     name: string
                     question_ids: string[]
+                    time_limit: number | null
                     created_at: string
                 }
                 Insert: {
                     id?: string
                     name: string
                     question_ids?: string[]
+                    time_limit?: number | null
                     created_at?: string
                 }
                 Update: {
                     id?: string
                     name?: string
                     question_ids?: string[]
+                    time_limit?: number | null
                     created_at?: string
                 }
             }
@@ -91,7 +94,9 @@ export interface Database {
                 Row: {
                     id: string
                     title: string | null
-                    image_url: string
+                    content: string | null
+                    content_image_url: string | null
+                    image_url: string | null
                     question_type: 'multiple_choice' | 'essay'
                     options: Json | null
                     correct_answer: string | null
@@ -101,7 +106,9 @@ export interface Database {
                 Insert: {
                     id?: string
                     title?: string | null
-                    image_url: string
+                    content?: string | null
+                    content_image_url?: string | null
+                    image_url?: string | null
                     question_type: 'multiple_choice' | 'essay'
                     options?: Json | null
                     correct_answer?: string | null
@@ -111,7 +118,9 @@ export interface Database {
                 Update: {
                     id?: string
                     title?: string | null
-                    image_url?: string
+                    content?: string | null
+                    content_image_url?: string | null
+                    image_url?: string | null
                     question_type?: 'multiple_choice' | 'essay'
                     options?: Json | null
                     correct_answer?: string | null
