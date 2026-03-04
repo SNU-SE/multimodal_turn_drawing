@@ -97,10 +97,26 @@ export default function AdminRoomGroup() {
     const handleSaveQuestions = async () => {
         setIsSavingQuestions(true)
         try {
+            // 1. room_groups 업데이트
             await (supabase as any).from('room_groups').update({ question_ids: selectedQuestionIds }).eq('id', groupId)
+
+            // 2. 기존 pending 방들의 room_questions 동기화
+            const pendingRooms = rooms.filter(r => r.status === 'pending')
+            for (const room of pendingRooms) {
+                await (supabase as any).from('room_questions').delete().eq('room_id', room.id)
+                if (selectedQuestionIds.length > 0) {
+                    const newRQs = selectedQuestionIds.map(qId => ({
+                        room_id: room.id,
+                        question_id: qId
+                    }))
+                    await (supabase as any).from('room_questions').insert(newRQs)
+                }
+            }
+
             setGroupQuestionIds(selectedQuestionIds)
             setIsSelectModalOpen(false)
-            alert("출제 문제가 성공적으로 저장되었습니다. 이제 엑셀로 반을 생성할 수 있습니다.")
+            const syncedCount = pendingRooms.length
+            alert(`출제 문제가 저장되었습니다.${syncedCount > 0 ? ` 대기중인 ${syncedCount}개 방에 반영 완료.` : ''}`)
         } catch (error) {
             console.error(error)
             alert("저장 중 오류가 발생했습니다.")
