@@ -54,7 +54,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
     let channel: ReturnType<typeof supabase.channel> | null = null
     let isChannelReady = false
 
-    const safeSend = (event: string, payload: any) => {
+    const safeSend = async (event: string, payload: any) => {
         if (!channel) {
             logger.warn(`[safeSend] 채널 없음 — ${event} 전송 실패`)
             return
@@ -63,16 +63,21 @@ export const useRoomStore = create<RoomState>((set, get) => {
             logger.warn(`[safeSend] 채널 미연결 — ${event} 전송 대기 불가, 무시됨`)
             return
         }
-        logger.info(`[safeSend] 전송: ${event}`, typeof payload === 'object' ? JSON.stringify(payload).slice(0, 200) : payload)
-        channel.send({
-            type: 'broadcast',
-            event,
-            payload
-        }).then((status: any) => {
-            logger.debug(`[safeSend] ${event} 전송 결과:`, status)
-        }).catch((err: any) => {
-            logger.error(`[safeSend] ${event} 전송 오류:`, err)
-        })
+        try {
+            const result = await channel.send({
+                type: 'broadcast',
+                event,
+                payload
+            })
+            // ack: true이면 'ok' | 'timed out' 반환
+            if (result !== 'ok') {
+                logger.error(`[safeSend] ${event} 전송 실패:`, result)
+            } else {
+                logger.info(`[safeSend] ${event} 전송 OK`)
+            }
+        } catch (err: any) {
+            logger.error(`[safeSend] ${event} 예외:`, err)
+        }
     }
 
     const logTurnEvent = (eventType: string, metadata: Record<string, any> = {}) => {
@@ -174,7 +179,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 // ── Realtime 채널 구독 ──
                 logger.info('[joinRoom] Realtime 채널 생성:', `room:${room.id}`)
                 channel = supabase.channel(`room:${room.id}`, {
-                    config: { presence: { key: assignedPlayerId } }
+                    config: {
+                        broadcast: { ack: true, self: false },
+                        presence: { key: assignedPlayerId }
+                    }
                 })
 
                 // Presence sync
