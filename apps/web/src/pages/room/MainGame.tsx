@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft } from "lucide-react"
+import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,7 @@ export default function MainGame() {
         room, isPlayer1, playerId, questions,
         strokes, addStroke, eraseStroke, clearStrokes,
         partnerActiveStroke, updateActiveStroke,
-        isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, endTurn,
+        isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, advanceQuestion, endTurn,
         lastAnswerResult, clearAnswerResult,
         canvasImage, placeImage, updateImage,
         roomQuestions, goToReviewQuestion, backToReview, fetchRoomQuestions,
@@ -289,6 +289,19 @@ export default function MainGame() {
                                 className="w-full h-14 text-lg font-bold shadow-sm"
                             >
                                 <Edit3 className="mr-2" /> {isMC ? '정답 선택하기' : '정답 입력하기'}
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                onClick={() => isReviewMode ? backToReview() : advanceQuestion()}
+                                disabled={isReviewMode ? false : !isMyTurn}
+                                className="w-full h-10 text-muted-foreground hover:text-foreground"
+                            >
+                                {isReviewMode
+                                    ? <><ArrowLeft className="mr-1 w-4 h-4" /> 리뷰로 돌아가기</>
+                                    : currentQuestionIndex >= totalQuestions - 1
+                                        ? '제출'
+                                        : <><ChevronRight className="mr-1 w-4 h-4" /> 다음</>
+                                }
                             </Button>
                         </div>
                     ) : isMC ? (
