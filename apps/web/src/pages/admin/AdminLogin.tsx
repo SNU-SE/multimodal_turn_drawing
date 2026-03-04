@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label"
 import { Loader2 } from "lucide-react"
 import { logger } from "@/lib/logger"
 
+const ADMIN_EMAIL = "admin@mail.com"
+
 export default function AdminLogin() {
     const navigate = useNavigate()
-    const [userId, setUserId] = useState("")
     const [password, setPassword] = useState("")
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
@@ -20,25 +21,28 @@ export default function AdminLogin() {
         setError(null)
         setLoading(true)
 
-        // ID를 이메일 형식으로 변환 (admin → admin@mail.com)
-        const email = userId.includes("@") ? userId : `${userId}@mail.com`
-        logger.info("[AdminLogin] 로그인 시도:", { userId, email })
+        logger.info("[AdminLogin] 로그인 시도:", ADMIN_EMAIL)
 
-        const { data, error: authError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-        })
+        try {
+            const { data, error: authError } = await supabase.auth.signInWithPassword({
+                email: ADMIN_EMAIL,
+                password
+            })
 
-        setLoading(false)
+            if (authError) {
+                logger.error("[AdminLogin] 로그인 실패:", authError.message, authError.status)
+                setError(`로그인 실패: ${authError.message}`)
+                setLoading(false)
+                return
+            }
 
-        if (authError) {
-            logger.error("[AdminLogin] 로그인 실패:", authError.message)
-            setError("아이디 또는 비밀번호가 올바르지 않습니다.")
-            return
+            logger.info("[AdminLogin] 로그인 성공:", { userId: data.user?.id, email: data.user?.email })
+            navigate("/admin")
+        } catch (err: any) {
+            logger.error("[AdminLogin] 예외 발생:", err)
+            setError(`오류: ${err.message}`)
+            setLoading(false)
         }
-
-        logger.info("[AdminLogin] 로그인 성공:", { userId: data.user?.id, email: data.user?.email })
-        navigate("/admin")
     }
 
     return (
@@ -54,26 +58,16 @@ export default function AdminLogin() {
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="userId">ID</Label>
-                            <Input
-                                id="userId"
-                                type="text"
-                                value={userId}
-                                onChange={(e) => setUserId(e.target.value)}
-                                placeholder="admin"
-                                required
-                                autoComplete="username"
-                            />
-                        </div>
-                        <div className="space-y-2">
                             <Label htmlFor="password">Password</Label>
                             <Input
                                 id="password"
                                 type="password"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                placeholder="관리자 비밀번호"
                                 required
                                 autoComplete="current-password"
+                                autoFocus
                             />
                         </div>
 
