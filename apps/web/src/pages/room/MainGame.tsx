@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react"
+import { useNavigate } from "react-router-dom"
 import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -16,6 +17,8 @@ export default function MainGame() {
         canvasImage, placeImage, updateImage,
         roomQuestions, goToReviewQuestion, backToReview, fetchRoomQuestions,
     } = useRoomStore()
+
+    const navigate = useNavigate()
 
     // Turn State
     const turnState = room?.turn_state as any
@@ -174,6 +177,14 @@ export default function MainGame() {
                         {!hasRetryable && (
                             <p className="text-sm text-green-600 font-medium">모든 문제를 맞혔습니다! 축하합니다! 🎉</p>
                         )}
+
+                        <Button
+                            variant="outline"
+                            className="w-full mt-2"
+                            onClick={() => navigate('/')}
+                        >
+                            완료 — 처음으로 돌아가기
+                        </Button>
                     </CardContent>
                 </Card>
             </div>
