@@ -84,21 +84,22 @@ export default function MainGame() {
         setImageEditMode(false)
     }
 
-    // Timer countdown
+    // Timer countdown (disabled in review mode)
     useEffect(() => {
-        if (turnState?.isPaused || !isMyTurn || timeLeft <= 0) return
+        if (isReviewMode || turnState?.isPaused || !isMyTurn || timeLeft <= 0) return
         const timer = setInterval(() => {
             setTimeLeft((prev: number) => prev - 1)
         }, 1000)
         return () => clearInterval(timer)
-    }, [turnState?.isPaused, isMyTurn, timeLeft])
+    }, [isReviewMode, turnState?.isPaused, isMyTurn, timeLeft])
 
-    // Auto-end turn when timer hits 0
+    // Auto-end turn when timer hits 0 (disabled in review mode)
     useEffect(() => {
+        if (isReviewMode) return
         if (timeLeft === 0 && isMyTurn) {
             handleEndTurn('timer_expired')
         }
-    }, [timeLeft, isMyTurn])
+    }, [timeLeft, isMyTurn, isReviewMode])
 
     // Reset local time when turn switches or question advances
     useEffect(() => {
@@ -188,12 +189,21 @@ export default function MainGame() {
                 <p className="text-muted-foreground">이 플랫폼은 가로 모드(Landscape) 태블릿 및 PC에 최적화되어 있습니다. 기기를 가로로 회전해주세요.</p>
             </div>
 
+            {/* Review Mode Banner */}
+            {isReviewMode && (
+                <div className="absolute top-0 left-0 right-0 z-50 bg-amber-100 border-b border-amber-300 px-4 py-2 text-center">
+                    <span className="text-amber-800 text-sm font-medium">
+                        리뷰 모드 — 시간 제한 없이 자유롭게 그리고 답하세요
+                    </span>
+                </div>
+            )}
+
             {/* Answer Feedback Toast */}
             {lastAnswerResult && (
                 <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all ${lastAnswerResult.isCorrect ? 'bg-green-500' : 'bg-destructive'}`}>
                     {lastAnswerResult.isCorrect
                         ? <><CheckCircle2 className="w-5 h-5" /> 정답! 🎉 &quot;{lastAnswerResult.answer}&quot;</>
-                        : <><XCircle className="w-5 h-5" /> 오답. 다음 문제로...</>
+                        : <><XCircle className="w-5 h-5" /> 오답. {isReviewMode ? '리뷰로 돌아갑니다...' : '다음 문제로...'}</>
                     }
                 </div>
             )}
@@ -212,9 +222,13 @@ export default function MainGame() {
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
-                        <span className={`text-xl font-bold tabular-nums ${timeLeft <= 10 ? 'text-destructive animate-pulse' : ''}`}>
-                            {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
-                        </span>
+                        {isReviewMode ? (
+                            <span className="text-sm font-semibold text-amber-700 bg-amber-100 px-3 py-1 rounded-full">리뷰 모드</span>
+                        ) : (
+                            <span className={`text-xl font-bold tabular-nums ${timeLeft <= 10 ? 'text-destructive animate-pulse' : ''}`}>
+                                {Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}
+                            </span>
+                        )}
                     </div>
                 </div>
 
@@ -263,11 +277,15 @@ export default function MainGame() {
                     {!isAnswering ? (
                         <div className="space-y-4 w-full h-full flex flex-col justify-end">
                             <div className="text-center w-full">
-                                <p className="text-sm text-muted-foreground mb-4">정답을 아시나요? {isMC ? '정답 선택' : '정답 입력'} 버튼을 누르면 타이머가 일시정지됩니다.</p>
+                                <p className="text-sm text-muted-foreground mb-4">
+                                    {isReviewMode
+                                        ? '다시 도전해보세요!'
+                                        : `정답을 아시나요? ${isMC ? '정답 선택' : '정답 입력'} 버튼을 누르면 타이머가 일시정지됩니다.`}
+                                </p>
                             </div>
                             <Button
                                 onClick={() => startAnswer()}
-                                disabled={!isMyTurn}
+                                disabled={isReviewMode ? false : !isMyTurn}
                                 className="w-full h-14 text-lg font-bold shadow-sm"
                             >
                                 <Edit3 className="mr-2" /> {isMC ? '정답 선택하기' : '정답 입력하기'}
@@ -294,7 +312,7 @@ export default function MainGame() {
                                         <button
                                             key={idx}
                                             onClick={() => {
-                                                if (!isMyTurn) return
+                                                if (!isMyTurn && !isReviewMode) return
                                                 let next: string[]
                                                 if (isMultiAnswer) {
                                                     next = isSelected
@@ -307,12 +325,12 @@ export default function MainGame() {
                                                 setMcSelected(next)
                                                 updateAnswerText(next.join(','))
                                             }}
-                                            disabled={!isMyTurn}
+                                            disabled={isReviewMode ? false : !isMyTurn}
                                             className={`w-full text-left p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
                                                 isSelected
                                                     ? 'border-primary bg-primary/5 text-primary font-semibold'
                                                     : 'border-muted hover:border-muted-foreground/30'
-                                            } ${!isMyTurn ? 'opacity-70 cursor-default' : 'cursor-pointer'}`}
+                                            } ${!isMyTurn && !isReviewMode ? 'opacity-70 cursor-default' : 'cursor-pointer'}`}
                                         >
                                             <span className={`w-6 h-6 flex items-center justify-center rounded-${isMultiAnswer ? 'md' : 'full'} border-2 text-xs font-bold shrink-0 ${
                                                 isSelected ? 'border-primary bg-primary text-white' : 'border-muted-foreground/40'
@@ -324,7 +342,7 @@ export default function MainGame() {
                                     )
                                 })}
                             </div>
-                            {isMyTurn && (
+                            {(isMyTurn || isReviewMode) && (
                                 <div className="flex gap-2 pt-1">
                                     <Button
                                         variant="outline"
@@ -348,24 +366,24 @@ export default function MainGame() {
                         <div className="space-y-4 w-full h-full flex flex-col justify-end">
                             <div className="flex items-center justify-between">
                                 <h3 className="font-semibold flex items-center gap-2 text-primary">
-                                    <CheckCircle2 className="w-4 h-4" /> {isMyTurn ? "정답 작성 중..." : "상대방이 정답 작성 중..."}
+                                    <CheckCircle2 className="w-4 h-4" /> {isMyTurn || isReviewMode ? "정답 작성 중..." : "상대방이 정답 작성 중..."}
                                 </h3>
                                 <span className="text-xs text-muted-foreground animate-pulse">
-                                    {isMyTurn ? "상대방 화면에 실시간 표시됨" : "실시간 전송 중"}
+                                    {isMyTurn || isReviewMode ? "상대방 화면에 실시간 표시됨" : "실시간 전송 중"}
                                 </span>
                             </div>
                             <Input
                                 value={answerText}
                                 onChange={(e) => updateAnswerText(e.target.value)}
                                 onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && isMyTurn) submitAnswer()
+                                    if (e.key === 'Enter' && (isMyTurn || isReviewMode)) submitAnswer()
                                 }}
                                 placeholder="여기에 정답을 입력하세요"
                                 className="h-14 text-lg"
-                                autoFocus={isMyTurn}
-                                readOnly={!isMyTurn}
+                                autoFocus={isMyTurn || isReviewMode}
+                                readOnly={isReviewMode ? false : !isMyTurn}
                             />
-                            {isMyTurn && (
+                            {(isMyTurn || isReviewMode) && (
                                 <div className="flex gap-2">
                                     <Button
                                         variant="outline"
@@ -391,8 +409,8 @@ export default function MainGame() {
             {/* RIGHT 2/3: Canvas & Toolbar */}
             <main className="flex-1 flex flex-col bg-muted/10 relative">
 
-                {/* Turn indicator Overlay if NOT my turn */}
-                {!isMyTurn && (
+                {/* Turn indicator Overlay if NOT my turn (hidden in review mode) */}
+                {!isMyTurn && !isReviewMode && (
                     <div className="absolute inset-0 z-40 bg-background/50 backdrop-blur-[1px] flex flex-col items-center justify-center">
                         <Card className="shadow-xl border-primary/20 bg-card">
                             <CardContent className="p-8 text-center flex flex-col items-center gap-4">
@@ -409,7 +427,7 @@ export default function MainGame() {
                 )}
 
                 {/* Floating Toolbar */}
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-2 bg-card border rounded-full shadow-lg ${!isMyTurn && 'opacity-50 pointer-events-none'}`}>
+                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 p-2 bg-card border rounded-full shadow-lg ${!isMyTurn && !isReviewMode && 'opacity-50 pointer-events-none'}`}>
                     <div className="flex items-center gap-1 px-2 border-r pr-4">
                         {["#F45B69", "#22181C", "#5386E4", "#63A375", "#f59e0b"].map((c) => (
                             <button
@@ -471,7 +489,7 @@ export default function MainGame() {
                         <FreehandCanvas
                             color={color}
                             width={width}
-                            disabled={!isMyTurn || isAnswering}
+                            disabled={isReviewMode ? false : (!isMyTurn || isAnswering)}
                             initialStrokes={strokes}
                             partnerStroke={partnerActiveStroke}
                             onStrokeUpdate={(s) => updateActiveStroke(s)}
@@ -491,14 +509,24 @@ export default function MainGame() {
 
                 {/* Bottom Turn Actions */}
                 <div className="absolute bottom-6 right-6 z-30">
-                    <Button
-                        onClick={() => handleEndTurn('manual')}
-                        variant="outline"
-                        className="rounded-full bg-card shadow-md border px-6 hover:text-primary transition-colors"
-                        disabled={!isMyTurn || isAnswering || isEndingTurnRef.current}
-                    >
-                        내 턴 넘기기
-                    </Button>
+                    {isReviewMode ? (
+                        <Button
+                            onClick={() => backToReview()}
+                            variant="outline"
+                            className="rounded-full bg-card shadow-md border px-6 hover:text-amber-700 transition-colors"
+                        >
+                            <ArrowLeft className="mr-2 w-4 h-4" /> 리뷰로 돌아가기
+                        </Button>
+                    ) : (
+                        <Button
+                            onClick={() => handleEndTurn('manual')}
+                            variant="outline"
+                            className="rounded-full bg-card shadow-md border px-6 hover:text-primary transition-colors"
+                            disabled={!isMyTurn || isAnswering || isEndingTurnRef.current}
+                        >
+                            내 턴 넘기기
+                        </Button>
+                    )}
                 </div>
             </main>
         </div>
