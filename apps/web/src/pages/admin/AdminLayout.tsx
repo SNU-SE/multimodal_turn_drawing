@@ -1,4 +1,4 @@
-import { Outlet, Link, useNavigate } from "react-router-dom"
+import { Outlet, Link, useNavigate, useLocation } from "react-router-dom"
 import { Users, Settings, LogOut } from "lucide-react"
 import { logger } from "@/lib/logger"
 
@@ -6,6 +6,10 @@ const SESSION_KEY = "admin_authenticated"
 
 export default function AdminLayout() {
     const navigate = useNavigate()
+    const location = useLocation()
+
+    const isSessionsActive = location.pathname === '/admin' || location.pathname.startsWith('/admin/groups') || location.pathname.startsWith('/admin/recap')
+    const isQuestionsActive = location.pathname === '/admin/questions'
 
     const handleSignOut = () => {
         logger.info("[AdminLayout] 로그아웃")
@@ -25,11 +29,11 @@ export default function AdminLayout() {
                 </div>
 
                 <nav className="flex-1 space-y-2">
-                    <Link to="/admin" className="flex items-center gap-3 px-3 py-2 rounded-md bg-primary/10 text-primary font-medium">
+                    <Link to="/admin" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${isSessionsActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground'}`}>
                         <Users className="w-5 h-5" />
                         세션 관리 (Sessions)
                     </Link>
-                    <Link to="/admin/questions" className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-muted text-muted-foreground transition-colors">
+                    <Link to="/admin/questions" className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors ${isQuestionsActive ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-muted-foreground'}`}>
                         <Settings className="w-5 h-5" />
                         문제 은행 (Bank)
                     </Link>

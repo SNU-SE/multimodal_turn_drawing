@@ -429,49 +429,55 @@ export default function AdminRoomGroup() {
                         <p className="text-2xl font-bold text-green-600">{rooms.filter(r => r.status === 'completed').length}</p>
                     </div>
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                    <Button variant="outline" className="gap-2" onClick={() => {
-                        setTimeLimitInput(groupTimeLimit !== null ? String(groupTimeLimit) : '')
-                        setIsTimeLimitOpen(true)
-                    }}>
-                        <Clock className="w-4 h-4" />
-                        {groupTimeLimit !== null ? `턴 시간: ${groupTimeLimit}초` : '턴 시간 설정'}
-                    </Button>
-                    <Button variant="outline" className="gap-2" onClick={handleDownloadCodes}>
-                        <Download className="w-4 h-4" />
-                        접속코드 다운로드
-                    </Button>
-                    <Button variant="outline" className="gap-2" onClick={handleDownloadResults}>
-                        <Download className="w-4 h-4" />
-                        엑셀 결과 다운로드
-                    </Button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        hidden
-                        accept=".xlsx, .xls, .csv"
-                        onChange={handleFileUpload}
-                    />
-                    <Button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="bg-primary hover:bg-primary/90 gap-2"
-                    >
-                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                        방 추가(엑셀 템플릿)
-                    </Button>
-                    <Button
-                        onClick={() => {
-                            setSelectedQuestionIds(groupQuestionIds)
-                            setIsSelectModalOpen(true)
-                            fetchBankQuestions()
-                        }}
-                        variant="secondary"
-                        className="gap-2"
-                    >
-                        <Settings className="w-4 h-4" />
-                        출제할 문제 변경 ({groupQuestionIds.length}개)
-                    </Button>
+                <div className="flex flex-col gap-2">
+                    {/* Row 1: Settings + Add */}
+                    <div className="flex gap-2 justify-end">
+                        <Button variant="outline" className="gap-2" onClick={() => {
+                            setTimeLimitInput(groupTimeLimit !== null ? String(groupTimeLimit) : '')
+                            setIsTimeLimitOpen(true)
+                        }}>
+                            <Clock className="w-4 h-4" />
+                            {groupTimeLimit !== null ? `턴 시간: ${groupTimeLimit}초` : '턴 시간 설정'}
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setSelectedQuestionIds(groupQuestionIds)
+                                setIsSelectModalOpen(true)
+                                fetchBankQuestions()
+                            }}
+                            variant="outline"
+                            className="gap-2"
+                        >
+                            <Settings className="w-4 h-4" />
+                            출제할 문제 변경 ({groupQuestionIds.length}개)
+                        </Button>
+                        <input
+                            type="file"
+                            ref={fileInputRef}
+                            hidden
+                            accept=".xlsx, .xls, .csv"
+                            onChange={handleFileUpload}
+                        />
+                        <Button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isUploading}
+                            className="bg-primary hover:bg-primary/90 gap-2"
+                        >
+                            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                            방 추가(엑셀 템플릿)
+                        </Button>
+                    </div>
+                    {/* Row 2: Downloads */}
+                    <div className="flex gap-2 justify-end">
+                        <Button variant="outline" className="gap-2" onClick={handleDownloadCodes}>
+                            <Download className="w-4 h-4" />
+                            접속코드 다운로드
+                        </Button>
+                        <Button variant="outline" className="gap-2" onClick={handleDownloadResults}>
+                            <Download className="w-4 h-4" />
+                            엑셀 결과 다운로드
+                        </Button>
+                    </div>
                 </div>
             </div>
 
