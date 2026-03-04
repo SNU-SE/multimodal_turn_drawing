@@ -41,6 +41,18 @@ export default function MainGame() {
     const currentQuestionObj = questions[currentQuestionIndex]
     const totalQuestions = questions.length || 0
 
+    // Multiple choice
+    const isMC = currentQuestionObj?.question_type === 'multiple_choice'
+    const mcOptions: string[] = isMC ? (currentQuestionObj?.options as string[] || []) : []
+    const correctAnswerStr = currentQuestionObj?.correct_answer || ''
+    const correctIndices = correctAnswerStr.split(',').filter(Boolean)
+    const isMultiAnswer = correctIndices.length > 1
+
+    const [mcSelected, setMcSelected] = useState<string[]>([])
+
+    // Reset MC selection when question changes
+    useEffect(() => { setMcSelected([]) }, [currentQuestionIndex])
+
     // Canvas State
     const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#5386E4")
     const [width, setWidth] = useState(6)
@@ -202,21 +214,92 @@ export default function MainGame() {
                 </div>
 
                 {/* Answer Area */}
-                <div className="h-64 p-6 bg-card flex flex-col justify-end shrink-0">
+                <div className="h-auto min-h-64 p-6 bg-card flex flex-col justify-end shrink-0">
                     {!isAnswering ? (
                         <div className="space-y-4 w-full h-full flex flex-col justify-end">
                             <div className="text-center w-full">
-                                <p className="text-sm text-muted-foreground mb-4">정답을 아시나요? 정답 입력 버튼을 누르면 타이머가 일시정지됩니다.</p>
+                                <p className="text-sm text-muted-foreground mb-4">정답을 아시나요? {isMC ? '정답 선택' : '정답 입력'} 버튼을 누르면 타이머가 일시정지됩니다.</p>
                             </div>
                             <Button
                                 onClick={() => startAnswer()}
                                 disabled={!isMyTurn}
                                 className="w-full h-14 text-lg font-bold shadow-sm"
                             >
-                                <Edit3 className="mr-2" /> 정답 입력하기
+                                <Edit3 className="mr-2" /> {isMC ? '정답 선택하기' : '정답 입력하기'}
                             </Button>
                         </div>
+                    ) : isMC ? (
+                        /* Multiple Choice UI */
+                        <div className="space-y-3 w-full h-full flex flex-col justify-end">
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-semibold flex items-center gap-2 text-primary">
+                                    <CheckCircle2 className="w-4 h-4" /> {isMyTurn ? "정답 선택 중..." : "상대방이 정답 선택 중..."}
+                                </h3>
+                                {isMultiAnswer && (
+                                    <span className="text-xs bg-amber-100 text-amber-700 px-2 py-1 rounded-full font-medium">
+                                        정답을 모두 고르시오
+                                    </span>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                {mcOptions.map((option, idx) => {
+                                    const optionIndex = String(idx + 1)
+                                    const isSelected = mcSelected.includes(optionIndex)
+                                    return (
+                                        <button
+                                            key={idx}
+                                            onClick={() => {
+                                                if (!isMyTurn) return
+                                                let next: string[]
+                                                if (isMultiAnswer) {
+                                                    next = isSelected
+                                                        ? mcSelected.filter(v => v !== optionIndex)
+                                                        : [...mcSelected, optionIndex]
+                                                } else {
+                                                    next = isSelected ? [] : [optionIndex]
+                                                }
+                                                next.sort()
+                                                setMcSelected(next)
+                                                updateAnswerText(next.join(','))
+                                            }}
+                                            disabled={!isMyTurn}
+                                            className={`w-full text-left p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
+                                                isSelected
+                                                    ? 'border-primary bg-primary/5 text-primary font-semibold'
+                                                    : 'border-muted hover:border-muted-foreground/30'
+                                            } ${!isMyTurn ? 'opacity-70 cursor-default' : 'cursor-pointer'}`}
+                                        >
+                                            <span className={`w-6 h-6 flex items-center justify-center rounded-${isMultiAnswer ? 'md' : 'full'} border-2 text-xs font-bold shrink-0 ${
+                                                isSelected ? 'border-primary bg-primary text-white' : 'border-muted-foreground/40'
+                                            }`}>
+                                                {isSelected ? '✓' : optionIndex}
+                                            </span>
+                                            <span className="text-sm">{option}</span>
+                                        </button>
+                                    )
+                                })}
+                            </div>
+                            {isMyTurn && (
+                                <div className="flex gap-2 pt-1">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => { setMcSelected([]); cancelAnswer() }}
+                                        className="h-12 flex-1"
+                                    >
+                                        취소
+                                    </Button>
+                                    <Button
+                                        onClick={() => submitAnswer()}
+                                        className="h-12 flex-1 bg-green-600 hover:bg-green-700"
+                                        disabled={mcSelected.length === 0}
+                                    >
+                                        <Send className="mr-2 w-4 h-4" /> 최종 제출
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
                     ) : (
+                        /* Essay/Text UI */
                         <div className="space-y-4 w-full h-full flex flex-col justify-end">
                             <div className="flex items-center justify-between">
                                 <h3 className="font-semibold flex items-center gap-2 text-primary">
