@@ -1,7 +1,22 @@
-import { Outlet, Link } from "react-router-dom"
+import { Outlet, Link, useNavigate } from "react-router-dom"
 import { Users, Settings, LogOut } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { logger } from "@/lib/logger"
 
 export default function AdminLayout() {
+    const navigate = useNavigate()
+
+    const handleSignOut = async () => {
+        logger.info("[AdminLayout] 로그아웃 요청")
+        const { error } = await supabase.auth.signOut()
+        if (error) {
+            logger.error("[AdminLayout] 로그아웃 실패:", error.message)
+        } else {
+            logger.info("[AdminLayout] 로그아웃 성공")
+        }
+        navigate("/admin/login")
+    }
+
     return (
         <div className="flex h-screen w-full bg-background text-foreground">
             {/* Sidebar */}
@@ -25,7 +40,10 @@ export default function AdminLayout() {
                 </nav>
 
                 <div className="mt-auto">
-                    <button className="flex w-full items-center gap-3 px-3 py-2 rounded-md hover:bg-destructive/10 text-destructive transition-colors">
+                    <button
+                        onClick={handleSignOut}
+                        className="flex w-full items-center gap-3 px-3 py-2 rounded-md hover:bg-destructive/10 text-destructive transition-colors"
+                    >
                         <LogOut className="w-5 h-5" />
                         Sign out
                     </button>

@@ -43,7 +43,7 @@ interface RoomState {
     updateAnswerText: (text: string) => void
     submitAnswer: () => Promise<void>
     advanceQuestion: () => Promise<void>
-    endTurn: () => Promise<void>
+    endTurn: (reason?: 'manual' | 'timer_expired') => Promise<void>
 
     // Added to trigger room updates to partner
     broadcastRoomUpdate: (updatedRoom: RoomRow) => void
@@ -52,6 +52,19 @@ interface RoomState {
 export const useRoomStore = create<RoomState>((set, get) => {
     let intervalId: any = null
     let channel: ReturnType<typeof supabase.channel> | null = null
+
+    const logTurnEvent = (eventType: string, metadata: Record<string, any> = {}) => {
+        const { roomId, playerId } = get()
+        if (!roomId) return
+        supabase.from('turns_log' as any).insert({
+            room_id: roomId,
+            player_id: playerId,
+            event_type: eventType,
+            metadata
+        } as any).then(({ error }) => {
+            if (error) logger.error('Failed to log turn event:', error)
+        })
+    }
 
     return {
         room: null,
@@ -170,6 +183,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                             const updatedRoom = { ...currentRoom, ...payload }
                             channel!.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
                             set({ room: updatedRoom })
+                            logTurnEvent('turn_start', { questionIndex: 0, playerId: currentRoom.player1_id })
                         })
                     }
                 })
@@ -338,6 +352,20 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         startAnswer: () => {
             set({ isAnswering: true })
+
+            // Pause timer via DB + broadcast
+            const { room } = get()
+            if (room) {
+                const turnState = room.turn_state as any
+                const pausedPayload = { turn_state: { ...turnState, isPaused: true } }
+                ;(supabase as any).from('rooms').update(pausedPayload).eq('id', room.id).then()
+                const updatedRoom = { ...room, ...pausedPayload }
+                set({ room: updatedRoom })
+                if (channel) {
+                    channel.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
+                }
+            }
+
             if (channel) {
                 channel.send({ type: 'broadcast', event: 'typing', payload: { isAnswering: true, text: get().answerText } })
             }
@@ -345,6 +373,20 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         cancelAnswer: () => {
             set({ isAnswering: false, answerText: '' })
+
+            // Resume timer
+            const { room } = get()
+            if (room) {
+                const turnState = room.turn_state as any
+                const resumedPayload = { turn_state: { ...turnState, isPaused: false } }
+                ;(supabase as any).from('rooms').update(resumedPayload).eq('id', room.id).then()
+                const updatedRoom = { ...room, ...resumedPayload }
+                set({ room: updatedRoom })
+                if (channel) {
+                    channel.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
+                }
+            }
+
             if (channel) {
                 channel.send({ type: 'broadcast', event: 'typing', payload: { isAnswering: false, text: '' } })
             }
@@ -399,7 +441,17 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 logger.error('Failed to save answer:', err)
             }
 
-            set({ isAnswering: false, answerText: '' })
+            logTurnEvent('answer_submitted', { questionIndex: currentQuestionIndex, answer: answerText.trim(), isCorrect })
+
+            // Resume timer after answer submission
+            const turnState = room.turn_state as any
+            const resumedPayload = { turn_state: { ...turnState, isPaused: false } }
+            ;(supabase as any).from('rooms').update(resumedPayload).eq('id', room.id).then()
+            const updatedRoom2 = { ...room, ...resumedPayload }
+            if (channel) {
+                channel.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom2 })
+            }
+            set({ room: updatedRoom2, isAnswering: false, answerText: '' })
 
             // Broadcast typing stopped
             if (channel) {
@@ -456,6 +508,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
             await (supabase as any).from('rooms').update(payload).eq('id', room.id)
 
+            logTurnEvent('question_advanced', { fromIndex: currentIndex, toIndex: nextIndex })
+
             const updatedRoom = { ...room, ...payload }
             if (channel) {
                 channel.send({ type: 'broadcast', event: 'room_update', payload: updatedRoom })
@@ -463,7 +517,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             set({ room: updatedRoom, strokes: [] }) // Clear canvas for new question
         },
 
-        endTurn: async () => {
+        endTurn: async (reason?: 'manual' | 'timer_expired') => {
             const { room, questions } = get()
             if (!room) return
 
@@ -484,6 +538,11 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 }
             }
             await supabase.from('rooms').update(payload as never).eq('id', room.id)
+
+            logTurnEvent(reason === 'timer_expired' ? 'timer_expired' : 'turn_end', {
+                questionIndex: room.current_question_index,
+                nextPlayerId
+            })
 
             // Broadcast room update instantly
             if (channel) {

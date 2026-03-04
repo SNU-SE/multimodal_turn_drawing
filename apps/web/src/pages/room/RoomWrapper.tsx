@@ -47,11 +47,11 @@ export default function RoomWrapper() {
     }
 
     // Route depending on room status
-    if (room.status === 'playing') {
-        logger.debug(`Room ${room.id} is playing. Routing to MainGame.`)
+    if (room.status === 'playing' || room.status === 'completed') {
+        logger.debug(`Room ${room.id} is ${room.status}. Routing to MainGame.`)
         return <MainGame />
     }
 
-    logger.debug(`Room ${room.id} is pending/completed. Routing to LobbyWait.`)
+    logger.debug(`Room ${room.id} is pending. Routing to LobbyWait.`)
     return <LobbyWait />
 }

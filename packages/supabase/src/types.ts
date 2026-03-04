@@ -171,6 +171,32 @@ export interface Database {
                     timestamp?: string
                 }
             }
+            turns_log: {
+                Row: {
+                    id: string
+                    room_id: string
+                    player_id: string | null
+                    event_type: string
+                    metadata: Json
+                    created_at: string
+                }
+                Insert: {
+                    id?: string
+                    room_id: string
+                    player_id?: string | null
+                    event_type: string
+                    metadata?: Json
+                    created_at?: string
+                }
+                Update: {
+                    id?: string
+                    room_id?: string
+                    player_id?: string | null
+                    event_type?: string
+                    metadata?: Json
+                    created_at?: string
+                }
+            }
         }
         Views: {
             [_ in never]: never

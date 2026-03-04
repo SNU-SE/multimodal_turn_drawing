@@ -43,11 +43,11 @@ export default function MainGame() {
     // Guard to prevent double-firing endTurn
     const isEndingTurnRef = useRef(false)
 
-    const handleEndTurn = async () => {
+    const handleEndTurn = async (reason?: 'manual' | 'timer_expired') => {
         if (isEndingTurnRef.current || !isMyTurn) return
         isEndingTurnRef.current = true
         try {
-            await endTurn()
+            await endTurn(reason)
         } finally {
             // Reset after a delay so turn switch has time to propagate
             setTimeout(() => { isEndingTurnRef.current = false }, 2000)
@@ -70,7 +70,7 @@ export default function MainGame() {
     // Auto-end turn when timer hits 0
     useEffect(() => {
         if (timeLeft === 0 && isMyTurn) {
-            handleEndTurn()
+            handleEndTurn('timer_expired')
         }
     }, [timeLeft, isMyTurn])
 
