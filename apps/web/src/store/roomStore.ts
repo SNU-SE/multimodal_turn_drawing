@@ -57,6 +57,12 @@ interface RoomState {
     fetchRoomQuestions: () => Promise<void>
     goToReviewQuestion: (questionIndex: number) => Promise<void>
     backToReview: () => Promise<void>
+
+    // Approval System Actions
+    requestRetry: (questionIndex: number) => Promise<void>
+    requestComplete: () => Promise<void>
+    approveRequest: () => Promise<void>
+    rejectRequest: () => Promise<void>
 }
 
 export const useRoomStore = create<RoomState>((set, get) => {
@@ -559,13 +565,11 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const { room } = get()
             if (room) {
                 const turnState = room.turn_state as any
-                if (!turnState?.isReviewMode) {
-                    const pausedPayload = { turn_state: { ...turnState, isPaused: true } }
-                    ;(supabase as any).from('rooms').update(pausedPayload).eq('id', room.id).then()
-                    const updatedRoom = { ...room, ...pausedPayload }
-                    set({ room: updatedRoom })
-                    trySend('room_update', updatedRoom)
-                }
+                const pausedPayload = { turn_state: { ...turnState, isPaused: true } }
+                ;(supabase as any).from('rooms').update(pausedPayload).eq('id', room.id).then()
+                const updatedRoom = { ...room, ...pausedPayload }
+                set({ room: updatedRoom })
+                trySend('room_update', updatedRoom)
             }
 
             trySend('typing', { isAnswering: true, text: get().answerText })
@@ -578,13 +582,11 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const { room } = get()
             if (room) {
                 const turnState = room.turn_state as any
-                if (!turnState?.isReviewMode) {
-                    const resumedPayload = { turn_state: { ...turnState, isPaused: false } }
-                    ;(supabase as any).from('rooms').update(resumedPayload).eq('id', room.id).then()
-                    const updatedRoom = { ...room, ...resumedPayload }
-                    set({ room: updatedRoom })
-                    trySend('room_update', updatedRoom)
-                }
+                const resumedPayload = { turn_state: { ...turnState, isPaused: false } }
+                ;(supabase as any).from('rooms').update(resumedPayload).eq('id', room.id).then()
+                const updatedRoom = { ...room, ...resumedPayload }
+                set({ room: updatedRoom })
+                trySend('room_update', updatedRoom)
             }
 
             trySend('typing', { isAnswering: false, text: '' })
@@ -635,16 +637,12 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
             const currentTurnState = room.turn_state as any
 
-            // Resume timer (skip in review mode)
-            if (!currentTurnState?.isReviewMode) {
-                const resumedPayload = { turn_state: { ...currentTurnState, isPaused: false } }
-                ;(supabase as any).from('rooms').update(resumedPayload).eq('id', room.id).then()
-                const updatedRoom2 = { ...room, ...resumedPayload }
-                trySend('room_update', updatedRoom2)
-                set({ room: updatedRoom2, isAnswering: false, answerText: '' })
-            } else {
-                set({ isAnswering: false, answerText: '' })
-            }
+            // Resume timer
+            const resumedPayload = { turn_state: { ...currentTurnState, isPaused: false } }
+            ;(supabase as any).from('rooms').update(resumedPayload).eq('id', room.id).then()
+            const updatedRoom2 = { ...room, ...resumedPayload }
+            trySend('room_update', updatedRoom2)
+            set({ room: updatedRoom2, isAnswering: false, answerText: '' })
 
             trySend('typing', { isAnswering: false, text: '' })
             trySend('answer_result', { answer: answerText.trim(), isCorrect, questionIndex: currentQuestionIndex })
@@ -745,19 +743,32 @@ export const useRoomStore = create<RoomState>((set, get) => {
         },
 
         goToReviewQuestion: async (questionIndex: number) => {
-            const { room } = get()
+            const { room, questions } = get()
             if (!room) return
             logger.info(`[goToReviewQuestion] 리뷰 모드 진입, 문제 ${questionIndex + 1}`)
+            const question = questions[questionIndex]
+            const timeLeft = resolveTimeLimit(question?.default_time_limit)
+
             const payload = {
                 current_question_index: questionIndex,
                 turn_state: {
                     currentPlayerId: room.player1_id,
-                    timeLeft: 9999,
-                    isPaused: true,
+                    timeLeft,
+                    isPaused: false,
                     isReviewMode: true,
+                    pendingRequest: null,
                 }
             }
             await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+
+            // Reset previous answer for this question so it can be re-submitted
+            if (question?.id) {
+                await (supabase as any).from('room_questions')
+                    .update({ submitted_answer: null, is_correct: null })
+                    .eq('room_id', room.id)
+                    .eq('question_id', question.id)
+            }
+
             const updatedRoom = { ...room, ...payload }
             trySend('room_update', updatedRoom)
             set({ room: updatedRoom, isAnswering: false, answerText: '' })
@@ -772,12 +783,99 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 turn_state: {
                     ...(room.turn_state as any),
                     isReviewMode: false,
+                    pendingRequest: null,
                 }
             }
             await (supabase as any).from('rooms').update(payload).eq('id', room.id)
             const updatedRoom = { ...room, ...payload }
             trySend('room_update', updatedRoom)
             set({ room: updatedRoom, isAnswering: false, answerText: '' })
+        },
+
+        // ── Approval System ──
+
+        requestRetry: async (questionIndex: number) => {
+            const { room, playerId } = get()
+            if (!room || !playerId) return
+            const currentTurnState = room.turn_state as any
+            if (currentTurnState?.pendingRequest) return // 중복 방지
+
+            const payload = {
+                turn_state: {
+                    ...currentTurnState,
+                    pendingRequest: {
+                        type: 'retry',
+                        requestedBy: playerId,
+                        questionIndex,
+                        requestedAt: new Date().toISOString(),
+                    }
+                }
+            }
+            await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+            const updatedRoom = { ...room, ...payload }
+            trySend('room_update', updatedRoom)
+            set({ room: updatedRoom })
+            logTurnEvent('retry_requested', { questionIndex })
+        },
+
+        requestComplete: async () => {
+            const { room, playerId } = get()
+            if (!room || !playerId) return
+            const currentTurnState = room.turn_state as any
+            if (currentTurnState?.pendingRequest) return
+
+            const payload = {
+                turn_state: {
+                    ...currentTurnState,
+                    pendingRequest: {
+                        type: 'complete',
+                        requestedBy: playerId,
+                        requestedAt: new Date().toISOString(),
+                    }
+                }
+            }
+            await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+            const updatedRoom = { ...room, ...payload }
+            trySend('room_update', updatedRoom)
+            set({ room: updatedRoom })
+            logTurnEvent('complete_requested', {})
+        },
+
+        approveRequest: async () => {
+            const { room } = get()
+            if (!room) return
+            const ts = room.turn_state as any
+            const request = ts?.pendingRequest
+            if (!request) return
+
+            logTurnEvent('request_approved', { type: request.type, questionIndex: request.questionIndex })
+
+            if (request.type === 'retry') {
+                await get().goToReviewQuestion(request.questionIndex)
+            } else if (request.type === 'complete') {
+                const payload = {
+                    turn_state: { ...ts, pendingRequest: null, gameFinished: true }
+                }
+                await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+                const updatedRoom = { ...room, ...payload }
+                trySend('room_update', updatedRoom)
+                set({ room: updatedRoom })
+            }
+        },
+
+        rejectRequest: async () => {
+            const { room } = get()
+            if (!room) return
+            const ts = room.turn_state as any
+            logTurnEvent('request_rejected', { type: ts?.pendingRequest?.type })
+
+            const payload = {
+                turn_state: { ...ts, pendingRequest: null }
+            }
+            await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+            const updatedRoom = { ...room, ...payload }
+            trySend('room_update', updatedRoom)
+            set({ room: updatedRoom })
         },
     }
 })
