@@ -149,7 +149,7 @@ export default function AdminRoomGroup() {
         const toIdx = direction === 'up' ? fromIdx - 1 : fromIdx + 1
         if (toIdx < 0 || toIdx >= selectedQuestionIds.length) return
         const next = [...selectedQuestionIds]
-        ;[next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]]
+            ;[next[fromIdx], next[toIdx]] = [next[toIdx], next[fromIdx]]
         setSelectedQuestionIds(next)
     }
 
@@ -548,26 +548,14 @@ export default function AdminRoomGroup() {
                             setIsTimeLimitOpen(true)
                         }}>
                             <Clock className="w-4 h-4" />
-                            {groupTimeLimit !== null ? `턴 시간: ${groupTimeLimit}초` : '턴 시간 설정'}
+                            {groupTimeLimit !== null ? `턴 시간: ${groupTimeLimit}초` : '턴 시간'}
                         </Button>
                         <Button variant="outline" className="gap-2" onClick={() => {
                             setSessionTimeLimitInput(sessionTimeLimit !== null ? String(sessionTimeLimit) : '')
                             setIsSessionTimeLimitOpen(true)
                         }}>
                             <Clock className="w-4 h-4" />
-                            {sessionTimeLimit !== null ? `세션 시간: ${sessionTimeLimit}분` : '세션 시간 설정'}
-                        </Button>
-                        <Button
-                            onClick={() => {
-                                setSelectedQuestionIds(groupQuestionIds)
-                                setIsSelectModalOpen(true)
-                                fetchBankQuestions()
-                            }}
-                            variant="outline"
-                            className="gap-2"
-                        >
-                            <Settings className="w-4 h-4" />
-                            출제할 문제 변경 ({groupQuestionIds.length}개)
+                            {sessionTimeLimit !== null ? `세션 시간: ${sessionTimeLimit}분` : '세션 시간'}
                         </Button>
                         <Button
                             variant="outline"
@@ -575,7 +563,7 @@ export default function AdminRoomGroup() {
                             onClick={() => setIsAddRoomOpen(true)}
                         >
                             <PlusCircle className="w-4 h-4" />
-                            방 1개 추가
+                            방 추가
                         </Button>
                         <input
                             type="file"
@@ -590,10 +578,22 @@ export default function AdminRoomGroup() {
                             className="bg-primary hover:bg-primary/90 gap-2"
                         >
                             {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                            방 추가(엑셀 템플릿)
+                            방 추가(템플릿)
                         </Button>
                     </div>
                     {/* Row 2: Downloads */}
+                    <Button
+                        onClick={() => {
+                            setSelectedQuestionIds(groupQuestionIds)
+                            setIsSelectModalOpen(true)
+                            fetchBankQuestions()
+                        }}
+                        variant="outline"
+                        className="gap-2"
+                    >
+                        <Settings className="w-4 h-4" />
+                        출제 문항 ({groupQuestionIds.length}개)
+                    </Button>
                     <div className="flex gap-2 justify-end">
                         <Button variant="outline" className="gap-2" onClick={handleDownloadCodes}>
                             <Download className="w-4 h-4" />
@@ -616,7 +616,6 @@ export default function AdminRoomGroup() {
                             <TableHead>Player 2 접속코드</TableHead>
                             <TableHead>상태</TableHead>
                             <TableHead>진행 단계</TableHead>
-                            <TableHead>현재 턴 시간</TableHead>
                             <TableHead className="text-right">액션</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -644,13 +643,13 @@ export default function AdminRoomGroup() {
                                 <TableCell>
                                     {room.current_question_index + 1} / {groupQuestionIds.length > 0 ? groupQuestionIds.length : '-'}
                                 </TableCell>
-                                <TableCell>
-                                    <span className={room.status === 'playing' ? 'text-primary font-medium' : 'text-muted-foreground'}>
-                                        {room.status === 'completed' ? '완료됨' : '대기중 혹은 진행'}
-                                    </span>
-                                </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1">
+                                        <Link to={`/admin/recap/${room.id}`}>
+                                            <Button variant="ghost" size="sm">
+                                                리캡 보기
+                                            </Button>
+                                        </Link>
                                         <Button variant="ghost" size="sm" onClick={() => {
                                             setEditingRoom(room)
                                             setEditCode(room.code || '')
@@ -659,11 +658,6 @@ export default function AdminRoomGroup() {
                                         }}>
                                             <Pencil className="w-4 h-4" />
                                         </Button>
-                                        <Link to={`/admin/recap/${room.id}`}>
-                                            <Button variant="ghost" size="sm">
-                                                {room.status === "completed" ? "리캡 보기" : "실시간 관전"}
-                                            </Button>
-                                        </Link>
                                         <Button variant="ghost" size="sm" onClick={() => deleteRoom(room.id)} className="text-destructive hover:bg-destructive/10 hover:text-destructive">
                                             <Trash2 className="w-4 h-4" />
                                         </Button>
@@ -679,9 +673,9 @@ export default function AdminRoomGroup() {
             <Dialog open={isTimeLimitOpen} onOpenChange={setIsTimeLimitOpen}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
-                        <DialogTitle>세션 턴 시간 설정</DialogTitle>
+                        <DialogTitle>턴 시간 설정</DialogTitle>
                         <DialogDescription>
-                            이 세션의 모든 문제에 적용할 턴 시간(초)을 설정합니다. 비워두면 문제별 기본 시간이 사용됩니다.
+                            방에서 진행하는 모든 문제에 적용할 턴 시간(초)을 설정합니다. 비워두면 문제별 기본 시간이 사용됩니다.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -696,7 +690,7 @@ export default function AdminRoomGroup() {
                                 value={timeLimitInput}
                                 onChange={e => setTimeLimitInput(e.target.value)}
                             />
-                            <p className="text-xs text-muted-foreground">10~600초, 비우면 NULL(문제별 default_time_limit 사용)</p>
+                            <p className="text-xs text-muted-foreground">10~600초, 비우면 문제별 설정된 시간 사용</p>
                         </div>
                     </div>
                     <DialogFooter>
@@ -715,7 +709,7 @@ export default function AdminRoomGroup() {
                     <DialogHeader>
                         <DialogTitle>세션 전체 시간 설정</DialogTitle>
                         <DialogDescription>
-                            이 세션의 전체 제한 시간(분)을 설정합니다. 0이거나 비워두면 제한 없음.
+                            방의 제한 시간(분)을 설정합니다. 0이거나 비워두면 제한 없음.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -747,7 +741,7 @@ export default function AdminRoomGroup() {
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
                         <DialogTitle>방 정보 수정</DialogTitle>
-                        <DialogDescription>방 식별자와 플레이어 이름을 수정합니다.</DialogDescription>
+                        <DialogDescription>방 식별자와 참여자 이름을 수정합니다.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="space-y-2">
@@ -865,7 +859,7 @@ export default function AdminRoomGroup() {
                             className="bg-primary flex-1"
                         >
                             {isSavingQuestions && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                            선택 문제 확정 저장
+                            선택 문제 확정
                         </Button>
                     </DialogFooter>
                 </DialogContent>
