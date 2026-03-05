@@ -137,6 +137,19 @@ export default function MainGame() {
         }
     }
 
+    // Guard to prevent double-firing requestRetry
+    const isRequestingRetryRef = useRef(false)
+
+    const handleRequestRetry = async (idx: number) => {
+        if (isRequestingRetryRef.current) return
+        isRequestingRetryRef.current = true
+        try {
+            await requestRetry(idx)
+        } finally {
+            setTimeout(() => { isRequestingRetryRef.current = false }, 2000)
+        }
+    }
+
     // Auto-disable eraser/image mode when selecting color/width
     const handleColorSelect = (c: string) => {
         setColor(c)
@@ -240,8 +253,8 @@ export default function MainGame() {
                                             <Button
                                                 variant="outline"
                                                 size="sm"
-                                                onClick={() => requestRetry(idx)}
-                                                disabled={hasPendingRequest}
+                                                onClick={() => handleRequestRetry(idx)}
+                                                disabled={hasPendingRequest || isRequestingRetryRef.current}
                                                 className="shrink-0"
                                             >
                                                 <RotateCcw className="w-3 h-3 mr-1" /> 재시도
