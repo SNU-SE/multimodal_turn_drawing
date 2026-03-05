@@ -10,7 +10,7 @@ export default function Home() {
 
     const handleJoin = (e: React.FormEvent) => {
         e.preventDefault()
-        if (code.length === 6) {
+        if (code.length === 7) {
             navigate(`/room/${code}`)
         }
     }
@@ -32,7 +32,7 @@ export default function Home() {
                 <CardHeader className="text-center">
                     <CardTitle className="text-2xl font-bold">함께 그리며 해결하기</CardTitle>
                     <CardDescription>
-                        선생님께서 알려주신 6자리 접속 코드를 입력하세요.<br /> 개인별로 서로 다른 접속 코드입니다.
+                        선생님께서 알려주신 7자리 접속 코드를 입력하세요.<br /> 개인별로 서로 다른 접속 코드입니다.
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -40,17 +40,17 @@ export default function Home() {
                         <div className="space-y-2">
                             <Input
                                 type="text"
-                                placeholder="1 2 3 4 5 6"
+                                placeholder="A B C 2 3 4 5"
                                 className="text-center text-2xl tracking-widest h-14"
-                                maxLength={6}
+                                maxLength={7}
                                 value={code}
-                                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                                onChange={(e) => setCode(e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase())}
                             />
                         </div>
                         <Button
                             type="submit"
                             className="w-full h-12 text-lg bg-primary hover:bg-primary/90"
-                            disabled={code.length !== 6}
+                            disabled={code.length !== 7}
                         >
                             입장하기
                         </Button>

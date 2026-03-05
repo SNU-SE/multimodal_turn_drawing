@@ -99,7 +99,7 @@ export default function AdminRecap() {
     return (
         <div className="flex flex-col h-screen bg-background">
             <header className="h-16 flex items-center px-6 border-b shrink-0 bg-card">
-                <Link to="/admin" className="p-2 mr-4 hover:bg-muted rounded-md transition-colors">
+                <Link to="../.." className="p-2 mr-4 hover:bg-muted rounded-md transition-colors">
                     <ArrowLeft className="w-5 h-5" />
                 </Link>
                 <div>

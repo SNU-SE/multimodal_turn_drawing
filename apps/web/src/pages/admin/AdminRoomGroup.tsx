@@ -12,6 +12,15 @@ import type { Database } from "@turn-based-drawing/supabase"
 import { logger } from "@/lib/logger"
 import * as XLSX from "xlsx"
 
+const CHARSET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789' // 31 chars, no O/I/L/0/1
+function generateInviteCode(): string {
+    let code = ''
+    for (let i = 0; i < 7; i++) {
+        code += CHARSET[Math.floor(Math.random() * CHARSET.length)]
+    }
+    return code
+}
+
 type RoomRow = Database['public']['Tables']['rooms']['Row']
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -207,8 +216,8 @@ export default function AdminRoomGroup() {
 
                     const p1Id = crypto.randomUUID()
                     const p2Id = crypto.randomUUID()
-                    const p1Code = Math.floor(100000 + Math.random() * 900000).toString()
-                    const p2Code = Math.floor(100000 + Math.random() * 900000).toString()
+                    const p1Code = generateInviteCode()
+                    const p2Code = generateInviteCode()
 
                     // Insert users
                     const { error: userError } = await (supabase as any).from('users').insert([
@@ -353,8 +362,8 @@ export default function AdminRoomGroup() {
         try {
             const p1Id = crypto.randomUUID()
             const p2Id = crypto.randomUUID()
-            const p1Code = Math.floor(100000 + Math.random() * 900000).toString()
-            const p2Code = Math.floor(100000 + Math.random() * 900000).toString()
+            const p1Code = generateInviteCode()
+            const p2Code = generateInviteCode()
 
             const { error: userError } = await (supabase as any).from('users').insert([
                 { id: p1Id, admin_alias: addP1Alias.trim() || '익명1' },
@@ -528,7 +537,7 @@ export default function AdminRoomGroup() {
     return (
         <div className="space-y-6">
             <div className="flex items-center gap-4 mb-2">
-                <Link to="/admin" className="p-2 hover:bg-muted rounded-md transition-colors">
+                <Link to=".." className="p-2 hover:bg-muted rounded-md transition-colors">
                     <ArrowLeft className="w-5 h-5 text-muted-foreground" />
                 </Link>
                 <div>
@@ -657,11 +666,11 @@ export default function AdminRoomGroup() {
                                     {room.status === "pending" && <Badge variant="outline" className="text-muted-foreground">대기중</Badge>}
                                 </TableCell>
                                 <TableCell>
-                                    {room.current_question_index + 1} / {groupQuestionIds.length > 0 ? groupQuestionIds.length : '-'}
+                                    {(room.current_question_index ?? 0) + 1} / {groupQuestionIds.length > 0 ? groupQuestionIds.length : '-'}
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1">
-                                        <Link to={`/admin/recap/${room.id}`}>
+                                        <Link to={`../recap/${room.id}`}>
                                             <Button variant="ghost" size="sm">
                                                 리캡 보기
                                             </Button>
@@ -798,7 +807,7 @@ export default function AdminRoomGroup() {
                             선택된 문제: <span className="text-primary">{selectedQuestionIds.length}</span>개
                         </span>
                         {bankQuestions.length < 5 && (
-                            <Link to="/admin/questions">
+                            <Link to="../questions">
                                 <Button variant="outline" size="sm" className="gap-2">
                                     <PlusCircle className="w-4 h-4" />
                                     문제 은행에 문제 만들러 가기

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react"
 import { supabase } from "@/lib/supabase"
+import { getMyProfile } from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -118,7 +119,15 @@ export default function AdminBank() {
 
     const fetchQuestions = async () => {
         logger.info("Fetching questions...")
-        const { data } = await (supabase as any).from('questions').select('*').order('created_at', { ascending: false })
+        const profile = await getMyProfile()
+        if (!profile) return
+
+        let query = (supabase as any).from('questions').select('*').order('created_at', { ascending: false })
+        if (profile.role !== 'super_admin') {
+            query = query.eq('org_id', profile.org_id)
+        }
+
+        const { data } = await query
         if (data) setQuestions(data as QuestionRow[])
     }
 
@@ -165,7 +174,7 @@ export default function AdminBank() {
     const startEdit = (q: QuestionRow) => {
         setEditingId(q.id)
         setTitle(q.title || "")
-        setQType(q.question_type)
+        setQType(q.question_type as "essay" | "multiple_choice")
         setContent(q.content || "")
         setContentImageFile(null)
         setContentImagePreview(q.content_image_url || null)
@@ -239,6 +248,9 @@ export default function AdminBank() {
                 imageUrl = null
             }
 
+            const profile = await getMyProfile()
+            if (!profile) return
+
             const payload = {
                 title: title.trim(),
                 content: content.trim() || null,
@@ -247,6 +259,8 @@ export default function AdminBank() {
                 question_type: qType,
                 options: qType === 'multiple_choice' ? options : null,
                 correct_answer: qType === 'multiple_choice' ? mcAnswers.sort().join(',') : answer.trim(),
+                org_id: profile.org_id,
+                created_by: profile.id,
             }
 
             if (editingId) {

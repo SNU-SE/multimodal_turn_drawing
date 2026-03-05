@@ -852,7 +852,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
             const turnState = room.turn_state as any
             const nextPlayerId = room.player1_id === get().playerId ? room.player2_id : room.player1_id
-            const currentQ = questions[room.current_question_index]
+            const currentQ = questions[room.current_question_index ?? 0]
             const nextTimeLeft = resolveTimeLimit(currentQ?.default_time_limit)
 
             logger.info(`[endTurn] ${reason || 'manual'} — 다음: ${nextPlayerId}`)

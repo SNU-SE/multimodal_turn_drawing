@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
+import { getMyProfile } from "@/lib/auth"
 import { logger } from "@/lib/logger"
 
 interface GroupStats {
@@ -21,7 +22,15 @@ export default function AdminDashboard() {
 
     const fetchGroups = async () => {
         logger.info("Admin fetching room groups...")
-        const { data: groupData } = await (supabase as any).from('room_groups').select('*').order('created_at', { ascending: false })
+        const profile = await getMyProfile()
+        if (!profile) return
+
+        let query = (supabase as any).from('room_groups').select('*').order('created_at', { ascending: false })
+        if (profile.role !== 'super_admin') {
+            query = query.eq('org_id', profile.org_id)
+        }
+
+        const { data: groupData } = await query
         if (!groupData) return
 
         const { data: roomData } = await (supabase as any).from('rooms').select('id, group_id, status')
@@ -57,11 +66,18 @@ export default function AdminDashboard() {
     }
 
     const handleCreateGroup = async () => {
+        const profile = await getMyProfile()
+        if (!profile) return
+
         const name = window.prompt('새로운 세션(그룹) 이름을 입력하세요. (예: 1차 실습)')
         if (!name || !name.trim()) return
 
         logger.info(`Creating new group: ${name}`)
-        const { data, error } = await (supabase as any).from('room_groups').insert({ name: name.trim() }).select().single()
+        const { data, error } = await (supabase as any).from('room_groups').insert({
+            name: name.trim(),
+            org_id: profile.org_id,
+            created_by: profile.id,
+        }).select().single()
 
         if (error || !data) {
             logger.error("Failed to create group", error)
@@ -69,8 +85,8 @@ export default function AdminDashboard() {
             return
         }
 
-        // Navigate directly to the newly created group to upload excel
-        navigate(`/admin/groups/${data.id}`)
+        // Navigate to the newly created group (relative path works for both super_admin and org routes)
+        navigate(`groups/${data.id}`)
     }
 
     return (
@@ -87,7 +103,7 @@ export default function AdminDashboard() {
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {groups.map((group) => (
-                    <Link key={group.id} to={`/admin/groups/${group.id}`}>
+                    <Link key={group.id} to={`groups/${group.id}`}>
                         <Card className="hover:border-primary/50 transition-colors cursor-pointer relative group">
                             <Button
                                 variant="destructive"
