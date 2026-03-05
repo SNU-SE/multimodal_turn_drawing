@@ -341,17 +341,11 @@ export default function MainGame() {
     }
 
     return (
-        <div className="flex h-screen w-full bg-background overflow-hidden relative">
-
-            {/* Device Restriction Overlay */}
-            <div className="hidden max-md:portrait:flex absolute inset-0 bg-background z-50 flex-col items-center justify-center p-8 text-center">
-                <h2 className="text-2xl font-bold mb-4">화면 방향 오류</h2>
-                <p className="text-muted-foreground">이 플랫폼은 가로 모드(Landscape) 태블릿 및 PC에 최적화되어 있습니다. 기기를 가로로 회전해주세요.</p>
-            </div>
+        <div className="flex flex-col h-screen w-full bg-background overflow-hidden relative">
 
             {/* Session Countdown Bar */}
             {hasSessionLimit && sessionSecondsLeft !== null && room?.status === 'playing' && (
-                <div className={`absolute top-0 left-0 right-0 z-[51] px-4 py-1.5 text-center border-b ${
+                <div className={`w-full shrink-0 px-4 py-1.5 text-center border-b ${
                     sessionSecondsLeft <= 60
                         ? 'bg-red-100 border-red-300'
                         : sessionSecondsLeft <= 300
@@ -365,6 +359,15 @@ export default function MainGame() {
                     </span>
                 </div>
             )}
+
+            {/* Main content row */}
+            <div className="flex flex-1 overflow-hidden relative">
+
+            {/* Device Restriction Overlay */}
+            <div className="hidden max-md:portrait:flex absolute inset-0 bg-background z-50 flex-col items-center justify-center p-8 text-center">
+                <h2 className="text-2xl font-bold mb-4">화면 방향 오류</h2>
+                <p className="text-muted-foreground">이 플랫폼은 가로 모드(Landscape) 태블릿 및 PC에 최적화되어 있습니다. 기기를 가로로 회전해주세요.</p>
+            </div>
 
             {/* Answer Feedback Toast */}
             {lastAnswerResult && (
@@ -729,6 +732,8 @@ export default function MainGame() {
                     )}
                 </div>
             </main>
+
+            </div>
         </div>
     )
 }
