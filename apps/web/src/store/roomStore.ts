@@ -67,6 +67,9 @@ interface RoomState {
     requestComplete: () => Promise<void>
     approveRequest: () => Promise<void>
     rejectRequest: () => Promise<void>
+
+    // Public logging
+    logEvent: (eventType: string, metadata?: Record<string, any>) => void
 }
 
 // Per-question canvas cache: preserves strokes/image when navigating between questions
@@ -98,7 +101,22 @@ export const useRoomStore = create<RoomState>((set, get) => {
             return
         }
 
-        // Question index changed and NOT review mode
+        // Question index changed
+        if (oldIdx !== newIdx) {
+            logTurnEvent('question_viewed', { questionIndex: newIdx, fromIndex: oldIdx })
+        }
+
+        // Review mode: restore cached canvas for the target question
+        if (oldIdx !== newIdx && isReview) {
+            const cached = questionCanvasCache.get(newIdx)
+            set({
+                room: newRoom,
+                strokes: cached?.strokes || [],
+                canvasImage: cached?.canvasImage || null,
+            })
+            return
+        }
+
         if (oldIdx !== newIdx && !isReview) {
             // Cache current canvas
             questionCanvasCache.set(oldIdx, { strokes: get().strokes, canvasImage: get().canvasImage })
@@ -136,6 +154,23 @@ export const useRoomStore = create<RoomState>((set, get) => {
         } as any).then(({ error }) => {
             if (error) logger.error('[logTurnEvent] DB 저장 실패:', error)
         })
+    }
+
+    let lastActiveStrokeLogTime = 0
+    let lastTypingLogTime = 0
+
+    const logActiveStrokeThrottled = (metadata: Record<string, any>) => {
+        const now = Date.now()
+        if (now - lastActiveStrokeLogTime < 2000) return
+        lastActiveStrokeLogTime = now
+        logTurnEvent('active_stroke', metadata)
+    }
+
+    const logTypingThrottled = (metadata: Record<string, any>) => {
+        const now = Date.now()
+        if (now - lastTypingLogTime < 1000) return
+        lastTypingLogTime = now
+        logTurnEvent('typing_content', metadata)
     }
 
     // ── Room polling (2s interval) ──
@@ -340,9 +375,20 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
                 const existingStrokes: any[] = []
                 let existingImage: CanvasImage | null = null
+                let currentBoundaryIdx = 0  // 현재 리플레이 중인 문제 인덱스
+                questionCanvasCache.clear()
                 if (existingLogs) {
                     for (const log of existingLogs) {
-                        if (log.action_type === 'clear') {
+                        if (log.action_type === 'question_boundary') {
+                            // 현재까지 쌓인 strokes를 이전 문제 캐시에 저장
+                            questionCanvasCache.set(currentBoundaryIdx, {
+                                strokes: [...existingStrokes],
+                                canvasImage: existingImage,
+                            })
+                            currentBoundaryIdx = log.payload?.toIndex ?? currentBoundaryIdx + 1
+                            existingStrokes.length = 0
+                            existingImage = null
+                        } else if (log.action_type === 'clear') {
                             existingStrokes.length = 0
                             existingImage = null
                         } else if (log.action_type === 'draw_path' && log.payload) {
@@ -355,7 +401,12 @@ export const useRoomStore = create<RoomState>((set, get) => {
                         }
                         lastStrokeTimestamp = log.timestamp
                     }
-                    logger.info(`[joinRoom] 기존 획 ${existingStrokes.length}개 로드`)
+                    // 마지막 문제(현재 문제)의 캔버스도 캐시에 저장
+                    questionCanvasCache.set(currentBoundaryIdx, {
+                        strokes: [...existingStrokes],
+                        canvasImage: existingImage,
+                    })
+                    logger.info(`[joinRoom] 기존 획 ${existingStrokes.length}개 로드, 캐시된 문제 ${questionCanvasCache.size}개`)
                 }
 
                 set({
@@ -364,6 +415,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     strokes: existingStrokes, canvasImage: existingImage,
                     sessionTimeLimit,
                 })
+
+                logTurnEvent('player_joined', { isPlayer1, roomCode: code })
 
                 // ── Realtime 채널 (best-effort broadcast + Postgres Changes) ──
                 logger.info('[joinRoom] Realtime 채널 생성')
@@ -408,6 +461,18 @@ export const useRoomStore = create<RoomState>((set, get) => {
                             trySend('room_update', updatedRoom)
                             set({ room: updatedRoom, strokes: [], canvasImage: null })
                             logTurnEvent('turn_start', { questionIndex: 0, playerId: currentRoom.player1_id })
+
+                            // Write initial boundary marker for question 0
+                            const pid = get().playerId
+                            if (pid) {
+                                supabase.from('canvas_logs').insert({
+                                    room_id: currentRoom.id, player_id: pid,
+                                    action_type: 'question_boundary',
+                                    payload: { fromIndex: -1, toIndex: 0 } as any,
+                                } as any).then(({ error }) => {
+                                    if (error) logger.error('[gameStart] boundary 저장 실패:', error)
+                                })
+                            }
                         })
                     }
                 })
@@ -480,12 +545,15 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         leaveRoom: () => {
             logger.info('[leaveRoom] 퇴장')
+            logTurnEvent('player_left', {})
             stopPolling()
             if (channel) supabase.removeChannel(channel)
             channel = null
             lastStrokeTimestamp = null
             groupTimeLimit = null
             sessionTimeLimit = null
+            lastActiveStrokeLogTime = 0
+            lastTypingLogTime = 0
             questionCanvasCache.clear()
             set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null, canvasImage: null, roomQuestions: [], sessionTimeLimit: null })
         },
@@ -494,6 +562,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const isReady = !get().isReady
             logger.info(`[toggleReady] ${isReady}`)
             set({ isReady })
+            logTurnEvent('button_toggle_ready', { isReady })
 
             if (channel) {
                 const { playerId } = get()
@@ -545,10 +614,18 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         updateActiveStroke: (stroke: any | null) => {
             trySend('active_stroke', { stroke })
+            if (stroke) {
+                logActiveStrokeThrottled({
+                    pointCount: stroke.points?.length || 0,
+                    color: stroke.color, width: stroke.width,
+                    questionIndex: get().room?.current_question_index || 0,
+                })
+            }
         },
 
         clearStrokes: () => {
             logger.info('[clearStrokes] 캔버스 초기화')
+            logTurnEvent('button_clear_strokes', { questionIndex: get().room?.current_question_index || 0 })
             set({ strokes: [], partnerActiveStroke: null, canvasImage: null })
             const { roomId, playerId } = get()
 
@@ -574,6 +651,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const image: CanvasImage = { url, x: 50, y: 50, width: 300, height: 200, visible: true }
             logger.info('[placeImage] 이미지 배치:', url)
             set({ canvasImage: image })
+            logTurnEvent('image_placed', { url, questionIndex: get().room?.current_question_index || 0 })
             const { roomId, playerId } = get()
 
             trySend('place_image', { image })
@@ -592,6 +670,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         updateImage: (image: CanvasImage) => {
             set({ canvasImage: image })
+            logTurnEvent('image_updated', { x: image.x, y: image.y, width: image.width, height: image.height, questionIndex: get().room?.current_question_index || 0 })
             const { roomId, playerId } = get()
 
             trySend('place_image', { image })
@@ -610,6 +689,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         startAnswer: () => {
             logger.info('[startAnswer] 정답 입력 시작 — 타이머 일시정지')
+            logTurnEvent('button_start_answer', { questionIndex: get().room?.current_question_index || 0 })
             set({ isAnswering: true })
 
             const { room } = get()
@@ -627,6 +707,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
         cancelAnswer: () => {
             logger.info('[cancelAnswer] 정답 입력 취소 — 타이머 재개')
+            logTurnEvent('button_cancel_answer', { questionIndex: get().room?.current_question_index || 0 })
             set({ isAnswering: false, answerText: '' })
 
             const { room } = get()
@@ -645,6 +726,12 @@ export const useRoomStore = create<RoomState>((set, get) => {
         updateAnswerText: (text: string) => {
             set({ answerText: text })
             trySend('typing', { isAnswering: true, text })
+            const { room, questions } = get()
+            const qIdx = room?.current_question_index || 0
+            logTypingThrottled({
+                text, questionIndex: qIdx,
+                questionType: questions[qIdx]?.question_type || 'essay',
+            })
         },
 
         submitAnswer: async () => {
@@ -719,6 +806,19 @@ export const useRoomStore = create<RoomState>((set, get) => {
             // Cache current canvas before moving
             questionCanvasCache.set(currentIndex, { strokes, canvasImage })
 
+            // Write boundary marker to canvas_logs for replay on rejoin
+            if (room.id && get().playerId) {
+                supabase.from('canvas_logs').insert({
+                    room_id: room.id, player_id: get().playerId,
+                    action_type: 'question_boundary',
+                    payload: (nextIndex >= questions.length
+                        ? { fromIndex: currentIndex, toIndex: currentIndex, completed: true }
+                        : { fromIndex: currentIndex, toIndex: nextIndex }) as any,
+                } as any).then(({ error }) => {
+                    if (error) logger.error('[advanceQuestion] boundary 저장 실패:', error)
+                })
+            }
+
             if (nextIndex >= questions.length) {
                 logger.info('[advanceQuestion] 모든 문제 완료!')
                 const payload = { status: 'completed' as const, current_question_index: currentIndex }
@@ -792,6 +892,17 @@ export const useRoomStore = create<RoomState>((set, get) => {
             // Cache current canvas
             questionCanvasCache.set(currentIndex, { strokes, canvasImage })
 
+            // Write boundary marker to canvas_logs for replay on rejoin
+            if (room.id && get().playerId) {
+                supabase.from('canvas_logs').insert({
+                    room_id: room.id, player_id: get().playerId,
+                    action_type: 'question_boundary',
+                    payload: { fromIndex: currentIndex, toIndex: prevIndex } as any,
+                } as any).then(({ error }) => {
+                    if (error) logger.error('[goToPreviousQuestion] boundary 저장 실패:', error)
+                })
+            }
+
             // Restore previous canvas from cache
             const cached = questionCanvasCache.get(prevIndex)
 
@@ -833,6 +944,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const { room, questions } = get()
             if (!room) return
             logger.info(`[goToReviewQuestion] 리뷰 모드 진입, 문제 ${questionIndex + 1}`)
+            logTurnEvent('question_viewed', { questionIndex, isReviewMode: true })
             const question = questions[questionIndex]
             const timeLeft = resolveTimeLimit(question?.default_time_limit)
 
@@ -858,13 +970,19 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
             const updatedRoom = { ...room, ...payload }
             trySend('room_update', updatedRoom)
-            set({ room: updatedRoom, isAnswering: false, answerText: '' })
+            const cached = questionCanvasCache.get(questionIndex)
+            set({
+                room: updatedRoom, isAnswering: false, answerText: '',
+                strokes: cached?.strokes || [],
+                canvasImage: cached?.canvasImage || null,
+            })
         },
 
         backToReview: async () => {
             const { room } = get()
             if (!room) return
             logger.info('[backToReview] 리뷰 요약으로 복귀')
+            logTurnEvent('button_back_to_review', {})
             await get().fetchRoomQuestions()
             const payload = {
                 turn_state: {
@@ -963,6 +1081,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const updatedRoom = { ...room, ...payload }
             trySend('room_update', updatedRoom)
             set({ room: updatedRoom })
+        },
+
+        logEvent: (eventType: string, metadata: Record<string, any> = {}) => {
+            logTurnEvent(eventType, metadata)
         },
     }
 })

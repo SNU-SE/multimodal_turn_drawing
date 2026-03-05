@@ -14,6 +14,21 @@ import * as XLSX from "xlsx"
 
 type RoomRow = Database['public']['Tables']['rooms']['Row']
 
+const EVENT_TYPE_LABELS: Record<string, string> = {
+    turn_start: '턴 시작', turn_end: '턴 종료', timer_expired: '타이머 만료',
+    answer_submitted: '답안 제출', question_advanced: '다음 문제 이동',
+    question_back: '이전 문제 이동', retry_requested: '재시도 요청',
+    complete_requested: '완료 요청', request_approved: '요청 승인',
+    request_rejected: '요청 거절',
+    button_start_answer: '정답 입력 시작', button_cancel_answer: '정답 입력 취소',
+    button_toggle_ready: '준비 토글', button_clear_strokes: '캔버스 초기화',
+    button_back_to_review: '리뷰 복귀', question_viewed: '문제 조회',
+    active_stroke: '그리기 활동', typing_content: '답안 입력 중',
+    player_joined: '플레이어 입장', player_left: '플레이어 퇴장',
+    mc_option_toggle: '객관식 선택 변경', image_placed: '이미지 배치',
+    image_updated: '이미지 위치/크기 조정', session_timer_tick: '세션 타이머 기록',
+}
+
 export default function AdminRoomGroup() {
     const { groupId } = useParams()
     const [rooms, setRooms] = useState<RoomRow[]>([])
@@ -489,6 +504,7 @@ export default function AdminRoomGroup() {
                             '방 식별자': room?.code || '-',
                             '플레이어': userMap[log.player_id] || log.player_id || '-',
                             '이벤트 유형': log.event_type,
+                            '이벤트 이름': EVENT_TYPE_LABELS[log.event_type] || log.event_type,
                             '메타데이터(JSON)': JSON.stringify(log.metadata),
                             '발생 시각': log.created_at,
                         }

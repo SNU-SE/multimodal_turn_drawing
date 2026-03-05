@@ -20,6 +20,7 @@ export default function MainGame() {
         goToPreviousQuestion,
         requestRetry, requestComplete, approveRequest, rejectRequest,
         sessionTimeLimit,
+        logEvent,
     } = useRoomStore()
 
     const navigate = useNavigate()
@@ -90,6 +91,23 @@ export default function MainGame() {
         return () => clearInterval(id)
     }, [hasSessionLimit, sessionTimeLimit, sessionStartedAt])
 
+    // Session timer tick — log every 10 minutes
+    useEffect(() => {
+        if (!hasSessionLimit || room?.status !== 'playing') return
+        const id = setInterval(() => {
+            const state = useRoomStore.getState()
+            const ts = state.room?.turn_state as any
+            if (!ts?.sessionStartedAt) return
+            const elapsed = (Date.now() - new Date(ts.sessionStartedAt).getTime()) / 1000
+            logEvent('session_timer_tick', {
+                sessionSecondsLeft: Math.max(0, Math.ceil((state.sessionTimeLimit! * 60) - elapsed)),
+                elapsedMinutes: Math.floor(elapsed / 60),
+                questionIndex: state.room?.current_question_index || 0,
+            })
+        }, 10 * 60 * 1000)
+        return () => clearInterval(id)
+    }, [hasSessionLimit, room?.status])
+
     // Auto-complete when session time expires (player1 only to avoid duplicate)
     useEffect(() => {
         if (sessionSecondsLeft === 0 && room?.status === 'playing' && isPlayer1) {
@@ -131,14 +149,14 @@ export default function MainGame() {
         setImageEditMode(false)
     }
 
-    // Timer countdown
+    // Timer countdown (both players see it decrease in sync)
     useEffect(() => {
-        if (turnState?.isPaused || !isMyTurn || timeLeft <= 0) return
+        if (turnState?.isPaused || timeLeft <= 0) return
         const timer = setInterval(() => {
             setTimeLeft((prev: number) => prev - 1)
         }, 1000)
         return () => clearInterval(timer)
-    }, [turnState?.isPaused, isMyTurn, timeLeft])
+    }, [turnState?.isPaused, timeLeft])
 
     // Auto-end turn when timer hits 0
     useEffect(() => {
@@ -494,6 +512,10 @@ export default function MainGame() {
                                                 next.sort()
                                                 setMcSelected(next)
                                                 updateAnswerText(next.join(','))
+                                                logEvent('mc_option_toggle', {
+                                                    optionIndex, selected: !isSelected,
+                                                    currentSelection: next, questionIndex: currentQuestionIndex,
+                                                })
                                             }}
                                             disabled={!isMyTurn}
                                             className={`w-full text-left p-3 rounded-lg border-2 transition-all flex items-center gap-3 ${
