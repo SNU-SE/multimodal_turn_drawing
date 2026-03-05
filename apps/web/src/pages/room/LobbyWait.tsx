@@ -1,5 +1,5 @@
 import { useRoomStore } from "@/store/roomStore"
-import { Users, Info, Eraser } from "lucide-react"
+import { Info, Eraser } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { FreehandCanvas } from "@/components/canvas/FreehandCanvas"
