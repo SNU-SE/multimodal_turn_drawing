@@ -21,6 +21,7 @@ interface RoomState {
     partnerReady: boolean
     isReady: boolean
     timeLeft: number
+    turnAcknowledged: boolean
     strokes: any[]
     partnerActiveStroke: any | null
     answerText: string
@@ -89,6 +90,13 @@ export const useRoomStore = create<RoomState>((set, get) => {
     const handleRoomUpdate = (newRoom: RoomRow) => {
         const currentRoom = get().room
         if (!currentRoom) { set({ room: newRoom }); return }
+
+        // Detect turn switch → acknowledge so timer-expired endTurn can fire
+        const oldPlayerId = (currentRoom.turn_state as any)?.currentPlayerId
+        const newPlayerId = (newRoom.turn_state as any)?.currentPlayerId
+        if (oldPlayerId !== newPlayerId) {
+            set({ turnAcknowledged: true })
+        }
 
         const oldIdx = currentRoom.current_question_index || 0
         const newIdx = newRoom.current_question_index || 0
@@ -286,6 +294,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
         partnerReady: false,
         isReady: false,
         timeLeft: 60,
+        turnAcknowledged: true,
         strokes: [],
         partnerActiveStroke: null,
         answerText: "",
@@ -869,7 +878,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
 
             const updatedRoom = { ...room, ...payload }
             trySend('room_update', updatedRoom)
-            set({ room: updatedRoom })
+            set({ room: updatedRoom, turnAcknowledged: false })
         },
 
         cleanup: () => {

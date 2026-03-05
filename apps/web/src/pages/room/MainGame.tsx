@@ -21,6 +21,7 @@ export default function MainGame() {
         requestRetry, requestComplete, approveRequest, rejectRequest,
         sessionTimeLimit,
         logEvent,
+        turnAcknowledged,
     } = useRoomStore()
 
     const navigate = useNavigate()
@@ -171,12 +172,12 @@ export default function MainGame() {
         return () => clearInterval(timer)
     }, [turnState?.isPaused, timeLeft])
 
-    // Auto-end turn when timer hits 0
+    // Auto-end turn when timer hits 0 (only if server acknowledged the last turn switch)
     useEffect(() => {
-        if (timeLeft === 0 && isMyTurn) {
+        if (timeLeft === 0 && isMyTurn && turnAcknowledged) {
             handleEndTurn('timer_expired')
         }
-    }, [timeLeft, isMyTurn])
+    }, [timeLeft, isMyTurn, turnAcknowledged])
 
     // Reset local time when turn switches or question advances
     useEffect(() => {
