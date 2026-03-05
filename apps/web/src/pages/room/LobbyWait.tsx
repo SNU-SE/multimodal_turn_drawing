@@ -13,8 +13,8 @@ export default function LobbyWait() {
         logger.info(`Lobby Wait. Room: ${room?.id}, isPlayer1: ${isPlayer1}, isReady: ${isReady}, partnerReady: ${partnerReady}`)
     }, [room?.id, isPlayer1, isReady, partnerReady])
 
-    const playerColor = isPlayer1 ? "#F45B69" : "#3b82f6"
-    const playerRoleName = isPlayer1 ? "Player 1 (Red)" : "Player 2 (Blue)"
+    const playerColor = isPlayer1 ? "#F45B69" : "#5386E4"
+    const playerRoleName = isPlayer1 ? "플레이어 1" : "플레이어 2"
 
     return (
         <div className="flex flex-col h-screen bg-background">
@@ -78,12 +78,6 @@ export default function LobbyWait() {
                                     두 명의 참가자가 모두 접속하고 <strong>준비 완료</strong>를 누르면 첫 번째 문제가 공개되고 타이머가 시작됩니다.
                                 </p>
                             </div>
-                            <div className="flex items-start gap-3">
-                                <Users className="w-5 h-5 text-primary shrink-0 mt-0.5" />
-                                <p className="text-sm">
-                                    현재 상대방의 정보는 완전히 <strong>블라인드 처리(익명)</strong>되며 서로 캔버스 위의 그림만 공유됩니다.
-                                </p>
-                            </div>
                         </CardContent>
                     </Card>
                 </aside>
@@ -95,8 +89,8 @@ export default function LobbyWait() {
                             <Eraser className="w-4 h-4" /> 테스트 지우기
                         </Button>
                     </div>
-                    <div className="p-4 bg-muted/30 border-b text-center text-sm font-medium text-muted-foreground shrink-0">
-                        이곳에 마우스나 펜슬로 그림을 그려 터치감을 테스트해보세요. (문제는 준비 완료 후 공개됩니다)
+                    <div className="p-4 bg-muted/30 border-b text-left text-sm font-medium text-muted-foreground shrink-0">
+                        이곳에 마우스나 펜슬로 그림을 그려 터치감을 테스트해보세요.
                     </div>
                     <div className="flex-1 relative">
                         <FreehandCanvas

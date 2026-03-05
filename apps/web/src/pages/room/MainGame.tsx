@@ -17,6 +17,7 @@ export default function MainGame() {
         lastAnswerResult, clearAnswerResult,
         canvasImage, placeImage, updateImage,
         roomQuestions, backToReview, fetchRoomQuestions,
+        goToPreviousQuestion,
         requestRetry, requestComplete, approveRequest, rejectRequest,
         sessionTimeLimit,
     } = useRoomStore()
@@ -60,6 +61,14 @@ export default function MainGame() {
 
     // Reset MC selection when question changes
     useEffect(() => { setMcSelected([]) }, [currentQuestionIndex])
+
+    // Sync partner's MC selection in real-time
+    useEffect(() => {
+        if (!isMyTurn && isAnswering && isMC && answerText) {
+            setMcSelected(answerText.split(',').filter(Boolean))
+        }
+        if (!isAnswering) setMcSelected([])
+    }, [isMyTurn, isAnswering, isMC, answerText])
 
     // Session countdown
     const sessionStartedAt = turnState?.sessionStartedAt as string | undefined
@@ -326,15 +335,6 @@ export default function MainGame() {
                 </div>
             )}
 
-            {/* Review Mode Banner - offset if session bar exists */}
-            {isReviewMode && (
-                <div className={`absolute ${hasSessionLimit && room?.status === 'playing' ? 'top-9' : 'top-0'} left-0 right-0 z-50 bg-amber-100 border-b border-amber-300 px-4 py-2 text-center`}>
-                    <span className="text-amber-800 text-sm font-medium">
-                        재시도 중 — 이 문제를 다시 풀고 있습니다
-                    </span>
-                </div>
-            )}
-
             {/* Answer Feedback Toast */}
             {lastAnswerResult && (
                 <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all ${lastAnswerResult.isCorrect ? 'bg-green-500' : 'bg-destructive'}`}>
@@ -426,19 +426,40 @@ export default function MainGame() {
                             >
                                 <Edit3 className="mr-2" /> {isMC ? '정답 선택하기' : '정답 입력하기'}
                             </Button>
-                            <Button
-                                variant="ghost"
-                                onClick={() => isReviewMode ? backToReview() : advanceQuestion()}
-                                disabled={!isMyTurn}
-                                className="w-full h-10 text-muted-foreground hover:text-foreground"
-                            >
-                                {isReviewMode
-                                    ? <><ArrowLeft className="mr-1 w-4 h-4" /> 리뷰로 돌아가기</>
-                                    : currentQuestionIndex >= totalQuestions - 1
-                                        ? '제출'
-                                        : <><ChevronRight className="mr-1 w-4 h-4" /> 다음</>
-                                }
-                            </Button>
+                            {isReviewMode ? (
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => backToReview()}
+                                    disabled={!isMyTurn}
+                                    className="w-full h-10 text-muted-foreground hover:text-foreground"
+                                >
+                                    <ArrowLeft className="mr-1 w-4 h-4" /> 리뷰로 돌아가기
+                                </Button>
+                            ) : (
+                                <div className="flex gap-2">
+                                    {currentQuestionIndex > 0 && (
+                                        <Button
+                                            variant="ghost"
+                                            onClick={() => goToPreviousQuestion()}
+                                            disabled={!isMyTurn}
+                                            className="flex-1 h-10 text-muted-foreground hover:text-foreground"
+                                        >
+                                            <ArrowLeft className="mr-1 w-4 h-4" /> 이전
+                                        </Button>
+                                    )}
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => advanceQuestion()}
+                                        disabled={!isMyTurn}
+                                        className="flex-1 h-10 text-muted-foreground hover:text-foreground"
+                                    >
+                                        {currentQuestionIndex >= totalQuestions - 1
+                                            ? '최종 제출'
+                                            : <><ChevronRight className="mr-1 w-4 h-4" /> 다음</>
+                                        }
+                                    </Button>
+                                </div>
+                            )}
                         </div>
                     ) : isMC ? (
                         /* Multiple Choice UI */
@@ -658,7 +679,7 @@ export default function MainGame() {
                             variant="outline"
                             className="rounded-full bg-card shadow-md border px-6 hover:text-amber-700 transition-colors"
                         >
-                            <ArrowLeft className="mr-2 w-4 h-4" /> 포기하고 돌아가기
+                            <ArrowLeft className="mr-2 w-4 h-4" /> 내 턴 넘기기
                         </Button>
                     )}
                     {!isReviewMode && (

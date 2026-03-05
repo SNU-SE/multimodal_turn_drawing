@@ -582,26 +582,26 @@ export default function AdminRoomGroup() {
                         </Button>
                     </div>
                     {/* Row 2: Downloads */}
-                    <Button
-                        onClick={() => {
-                            setSelectedQuestionIds(groupQuestionIds)
-                            setIsSelectModalOpen(true)
-                            fetchBankQuestions()
-                        }}
-                        variant="outline"
-                        className="gap-2"
-                    >
-                        <Settings className="w-4 h-4" />
-                        출제 문항 ({groupQuestionIds.length}개)
-                    </Button>
                     <div className="flex gap-2 justify-end">
+                        <Button
+                            onClick={() => {
+                                setSelectedQuestionIds(groupQuestionIds)
+                                setIsSelectModalOpen(true)
+                                fetchBankQuestions()
+                            }}
+                            variant="outline"
+                            className="gap-2"
+                        >
+                            <Settings className="w-4 h-4" />
+                            출제 문항 ({groupQuestionIds.length}개)
+                        </Button>
                         <Button variant="outline" className="gap-2" onClick={handleDownloadCodes}>
                             <Download className="w-4 h-4" />
-                            접속코드 다운로드
+                            접속코드
                         </Button>
                         <Button variant="outline" className="gap-2" onClick={handleDownloadResults}>
                             <Download className="w-4 h-4" />
-                            엑셀 결과 다운로드
+                            결과 엑셀
                         </Button>
                     </div>
                 </div>

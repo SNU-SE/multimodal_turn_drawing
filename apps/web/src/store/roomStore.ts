@@ -52,6 +52,7 @@ interface RoomState {
     endTurn: (reason?: 'manual' | 'timer_expired') => Promise<void>
 
     broadcastRoomUpdate: (updatedRoom: RoomRow) => void
+    goToPreviousQuestion: () => Promise<void>
 
     // Review Mode Actions
     fetchRoomQuestions: () => Promise<void>
@@ -68,6 +69,9 @@ interface RoomState {
     rejectRequest: () => Promise<void>
 }
 
+// Per-question canvas cache: preserves strokes/image when navigating between questions
+const questionCanvasCache = new Map<number, { strokes: any[]; canvasImage: CanvasImage | null }>()
+
 export const useRoomStore = create<RoomState>((set, get) => {
     let channel: ReturnType<typeof supabase.channel> | null = null
     let pollIntervalId: any = null
@@ -77,6 +81,42 @@ export const useRoomStore = create<RoomState>((set, get) => {
     let sessionTimeLimit: number | null = null  // 분 단위, null/0 = 제한 없음
 
     const resolveTimeLimit = (qDefault?: number) => groupTimeLimit ?? qDefault ?? 60
+
+    // Handle room updates with canvas state management
+    const handleRoomUpdate = (newRoom: RoomRow) => {
+        const currentRoom = get().room
+        if (!currentRoom) { set({ room: newRoom }); return }
+
+        const oldIdx = currentRoom.current_question_index || 0
+        const newIdx = newRoom.current_question_index || 0
+        const newTs = newRoom.turn_state as any
+        const isReview = !!(newTs?.isReviewMode)
+
+        // Status change: pending → playing → clear canvas (lobby drawings)
+        if (currentRoom.status === 'pending' && newRoom.status === 'playing') {
+            set({ room: newRoom, strokes: [], canvasImage: null })
+            return
+        }
+
+        // Question index changed and NOT review mode
+        if (oldIdx !== newIdx && !isReview) {
+            // Cache current canvas
+            questionCanvasCache.set(oldIdx, { strokes: get().strokes, canvasImage: get().canvasImage })
+
+            if (newIdx > oldIdx) {
+                // Forward: clear canvas
+                const cached = questionCanvasCache.get(newIdx)
+                set({ room: newRoom, strokes: cached?.strokes || [], canvasImage: cached?.canvasImage || null })
+            } else {
+                // Backward: restore from cache
+                const cached = questionCanvasCache.get(newIdx)
+                set({ room: newRoom, strokes: cached?.strokes || [], canvasImage: cached?.canvasImage || null })
+            }
+            return
+        }
+
+        set({ room: newRoom })
+    }
 
     // ── Fire-and-forget broadcast (best effort, no ack) ──
     const trySend = (event: string, payload: any) => {
@@ -121,7 +161,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const newTS = JSON.stringify(newRoom.turn_state)
             if (currentRoom?.status !== newRoom.status || currentTS !== newTS || currentRoom?.current_question_index !== newRoom.current_question_index) {
                 logger.info('[poll:room] 변경 감지:', { status: newRoom.status, turn_state: newRoom.turn_state, qIdx: newRoom.current_question_index })
-                set({ room: newRoom })
+                handleRoomUpdate(newRoom)
             }
         }, 2000)
     }
@@ -366,7 +406,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                         (supabase as any).from('rooms').update(payload).eq('id', currentRoom.id).then(() => {
                             const updatedRoom = { ...currentRoom, ...payload }
                             trySend('room_update', updatedRoom)
-                            set({ room: updatedRoom })
+                            set({ room: updatedRoom, strokes: [], canvasImage: null })
                             logTurnEvent('turn_start', { questionIndex: 0, playerId: currentRoom.player1_id })
                         })
                     }
@@ -410,7 +450,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 })
                 channel.on('broadcast', { event: 'room_update' }, (msg) => {
                     logger.info('[수신:broadcast] room_update')
-                    if (msg.payload) set({ room: msg.payload as RoomRow })
+                    if (msg.payload) handleRoomUpdate(msg.payload as RoomRow)
                 })
 
                 // Postgres Changes (more reliable on self-hosted)
@@ -446,6 +486,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             lastStrokeTimestamp = null
             groupTimeLimit = null
             sessionTimeLimit = null
+            questionCanvasCache.clear()
             set({ room: null, roomId: null, isConnected: false, strokes: [], partnerActiveStroke: null, isReady: false, partnerReady: false, lastAnswerResult: null, canvasImage: null, roomQuestions: [], sessionTimeLimit: null })
         },
 
@@ -669,11 +710,14 @@ export const useRoomStore = create<RoomState>((set, get) => {
         },
 
         advanceQuestion: async () => {
-            const { room, questions } = get()
+            const { room, questions, strokes, canvasImage } = get()
             if (!room) return
 
             const currentIndex = room.current_question_index || 0
             const nextIndex = currentIndex + 1
+
+            // Cache current canvas before moving
+            questionCanvasCache.set(currentIndex, { strokes, canvasImage })
 
             if (nextIndex >= questions.length) {
                 logger.info('[advanceQuestion] 모든 문제 완료!')
@@ -734,6 +778,40 @@ export const useRoomStore = create<RoomState>((set, get) => {
         broadcastRoomUpdate: (updatedRoom: RoomRow) => {
             trySend('room_update', updatedRoom)
             set({ room: updatedRoom })
+        },
+
+        goToPreviousQuestion: async () => {
+            const { room, questions, strokes, canvasImage } = get()
+            if (!room) return
+            const currentIndex = room.current_question_index || 0
+            if (currentIndex <= 0) return
+
+            const prevIndex = currentIndex - 1
+            logger.info(`[goToPreviousQuestion] ${currentIndex + 1} → ${prevIndex + 1}`)
+
+            // Cache current canvas
+            questionCanvasCache.set(currentIndex, { strokes, canvasImage })
+
+            // Restore previous canvas from cache
+            const cached = questionCanvasCache.get(prevIndex)
+
+            const prevQuestion = questions[prevIndex]
+            const timeLeft = resolveTimeLimit(prevQuestion?.default_time_limit)
+
+            const payload = {
+                current_question_index: prevIndex,
+                turn_state: { currentPlayerId: room.player1_id, timeLeft, isPaused: false }
+            }
+            await (supabase as any).from('rooms').update(payload).eq('id', room.id)
+            logTurnEvent('question_back', { fromIndex: currentIndex, toIndex: prevIndex })
+
+            const updatedRoom = { ...room, ...payload }
+            trySend('room_update', updatedRoom)
+            set({
+                room: updatedRoom,
+                strokes: cached?.strokes || [],
+                canvasImage: cached?.canvasImage || null,
+            })
         },
 
         fetchRoomQuestions: async () => {
