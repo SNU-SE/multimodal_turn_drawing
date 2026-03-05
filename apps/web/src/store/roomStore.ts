@@ -833,9 +833,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const nextTimeLeft = resolveTimeLimit(nextQuestion?.default_time_limit)
             logger.info(`[advanceQuestion] 문제 ${nextIndex + 1}/${questions.length}으로 이동`)
 
+            const currentTurnState = room.turn_state as any
             const payload = {
                 current_question_index: nextIndex,
-                turn_state: { currentPlayerId: room.player1_id, timeLeft: nextTimeLeft, isPaused: false }
+                turn_state: { ...currentTurnState, currentPlayerId: room.player1_id, timeLeft: nextTimeLeft, isPaused: false }
             }
 
             await (supabase as any).from('rooms').update(payload).eq('id', room.id)
