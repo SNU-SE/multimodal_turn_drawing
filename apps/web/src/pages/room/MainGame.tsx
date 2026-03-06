@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react"
 import { useNavigate } from "react-router-dom"
-import { Pointer, Edit3, Trash2, Send, CheckCircle2, XCircle, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft, ChevronRight, Loader2 } from "lucide-react"
+import { Pointer, Edit3, Trash2, Send, CheckCircle2, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -37,6 +37,9 @@ export default function MainGame() {
     // Canvas tool modes
     const [eraserMode, setEraserMode] = useState(false)
     const [imageEditMode, setImageEditMode] = useState(false)
+
+    // Auto-close countdown for session expiry
+    const [autoCloseCountdown, setAutoCloseCountdown] = useState<number | null>(null)
 
     // Answer feedback
     useEffect(() => {
@@ -120,6 +123,21 @@ export default function MainGame() {
             })()
         }
     }, [sessionSecondsLeft, room?.status, isPlayer1])
+
+    // Start auto-close countdown when session expires on completed screen
+    useEffect(() => {
+        if (room?.status === 'completed' && hasSessionLimit && sessionSecondsLeft === 0 && autoCloseCountdown === null) {
+            setAutoCloseCountdown(5)
+        }
+    }, [room?.status, hasSessionLimit, sessionSecondsLeft])
+
+    // Auto-close countdown tick → navigate home
+    useEffect(() => {
+        if (autoCloseCountdown === null) return
+        if (autoCloseCountdown <= 0) { navigate('/'); return }
+        const timer = setTimeout(() => setAutoCloseCountdown(prev => prev! - 1), 1000)
+        return () => clearTimeout(timer)
+    }, [autoCloseCountdown])
 
     // Canvas State
     const [color, setColor] = useState(isPlayer1 ? "#F45B69" : "#5386E4")
@@ -211,8 +229,7 @@ export default function MainGame() {
 
     // ReviewSummary Screen (completed + not in review mode)
     if (room?.status === 'completed' && !isReviewMode) {
-        const correctCount = roomQuestions.filter(rq => rq.is_correct === true).length
-        const hasRetryable = roomQuestions.some(rq => rq.is_correct !== true)
+        const sessionExpired = hasSessionLimit && sessionSecondsLeft !== null && sessionSecondsLeft <= 0
 
         return (
             <div className="flex h-screen w-full bg-background items-center justify-center">
@@ -223,52 +240,38 @@ export default function MainGame() {
                         </div>
                         <div className="text-center">
                             <h2 className="text-2xl font-bold mb-1">모든 문제 완료!</h2>
-                            <p className="text-muted-foreground">
-                                총 {totalQuestions}문제 중 <span className="font-bold text-primary">{correctCount}문제</span> 정답
-                            </p>
+                            {sessionExpired && autoCloseCountdown !== null ? (
+                                <p className="text-destructive font-medium">
+                                    {autoCloseCountdown}초 후 자동으로 종료됩니다
+                                </p>
+                            ) : (
+                                <p className="text-muted-foreground">총 {totalQuestions}문제를 풀었습니다</p>
+                            )}
                         </div>
 
                         {/* Question Results List */}
-                        <div className="w-full space-y-2">
+                        <div className="w-full max-h-[180px] overflow-y-auto space-y-2">
                             {questions.map((q, idx) => {
-                                const rq = roomQuestions.find(r => r.question_id === q.id)
-                                const status = rq?.is_correct === true ? 'correct' : rq?.submitted_answer ? 'wrong' : 'unanswered'
-                                const icon = status === 'correct' ? '✅' : status === 'wrong' ? '❌' : '⬜'
-
                                 return (
-                                    <div key={q.id} className={`flex items-center gap-3 p-3 rounded-lg border ${
-                                        status === 'correct' ? 'bg-green-50 border-green-200' : status === 'wrong' ? 'bg-red-50 border-red-200' : 'bg-muted/30 border-muted'
-                                    }`}>
-                                        <span className="text-lg">{icon}</span>
+                                    <div key={q.id} className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 border-muted">
                                         <div className="flex-1 min-w-0">
                                             <p className="text-sm font-medium truncate">
-                                                {idx + 1}. {q.content || q.title || `문제 ${idx + 1}`}
+                                                {idx + 1}. {(q.content || q.title || '문제').slice(0, 10)}...
                                             </p>
-                                            {rq?.submitted_answer && (
-                                                <p className="text-xs text-muted-foreground truncate">
-                                                    제출: {rq.submitted_answer}
-                                                </p>
-                                            )}
                                         </div>
-                                        {status !== 'correct' && (
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleRequestRetry(idx)}
-                                                disabled={hasPendingRequest || isRequestingRetryRef.current}
-                                                className="shrink-0"
-                                            >
-                                                <RotateCcw className="w-3 h-3 mr-1" /> 재시도
-                                            </Button>
-                                        )}
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => handleRequestRetry(idx)}
+                                            disabled={hasPendingRequest || isRequestingRetryRef.current || !!sessionExpired}
+                                            className="shrink-0"
+                                        >
+                                            <RotateCcw className="w-3 h-3 mr-1" /> 재시도
+                                        </Button>
                                     </div>
                                 )
                             })}
                         </div>
-
-                        {!hasRetryable && (
-                            <p className="text-sm text-green-600 font-medium">모든 문제를 맞혔습니다! 축하합니다! 🎉</p>
-                        )}
 
                         <Button
                             variant="outline"
@@ -276,7 +279,7 @@ export default function MainGame() {
                             onClick={() => requestComplete()}
                             disabled={hasPendingRequest}
                         >
-                            완료 — 게임 종료하기
+                            종료하기
                         </Button>
                     </CardContent>
                 </Card>
@@ -372,11 +375,8 @@ export default function MainGame() {
 
             {/* Answer Feedback Toast */}
             {lastAnswerResult && (
-                <div className={`absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all ${lastAnswerResult.isCorrect ? 'bg-green-500' : 'bg-destructive'}`}>
-                    {lastAnswerResult.isCorrect
-                        ? <><CheckCircle2 className="w-5 h-5" /> 정답! 🎉 &quot;{lastAnswerResult.answer}&quot;</>
-                        : <><XCircle className="w-5 h-5" /> 오답. {isReviewMode ? '리뷰로 돌아갑니다...' : '다음 문제로...'}</>
-                    }
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-6 py-3 rounded-full shadow-xl text-white font-bold text-lg transition-all bg-primary">
+                    <Send className="w-5 h-5" /> 답변이 제출되었습니다
                 </div>
             )}
 
