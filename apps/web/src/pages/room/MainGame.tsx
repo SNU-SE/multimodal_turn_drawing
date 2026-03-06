@@ -16,7 +16,7 @@ export default function MainGame() {
         isAnswering, answerText, startAnswer, cancelAnswer, updateAnswerText, submitAnswer, advanceQuestion, endTurn,
         lastAnswerResult, clearAnswerResult,
         canvasImage, placeImage, updateImage,
-        roomQuestions, backToReview, fetchRoomQuestions,
+        backToReview, fetchRoomQuestions,
         goToPreviousQuestion,
         requestRetry, requestComplete, approveRequest, rejectRequest,
         sessionTimeLimit,
