@@ -1,0 +1,65 @@
+version: '3.9'
+
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    ports:
+      - "7880:7880"      # HTTP API + WebSocket signaling
+      - "7881:7881"      # HTTPS (TLS)
+      - "7882:7882/udp"  # WebRTC media (UDP)
+      - "50000-50200:50000-50200/udp"  # ICE port range
+    volumes:
+      - ./livekit/config.yaml:/etc/livekit.yaml
+    command: --config /etc/livekit.yaml
+    networks:
+      - livekit-net
+
+  egress:
+    image: livekit/egress:latest
+    restart: unless-stopped
+    environment:
+      - EGRESS_CONFIG_FILE=/etc/egress.yaml
+    volumes:
+      - ./egress/config.yaml:/etc/egress.yaml
+      - recordings:/recordings
+    cap_add:
+      - SYS_ADMIN
+    networks:
+      - livekit-net
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "5349:5349/tcp"
+      - "49152-49200:49152-49200/udp"
+    volumes:
+      - ./coturn/turnserver.conf:/etc/turnserver.conf
+    command: -c /etc/turnserver.conf
+    networks:
+      - livekit-net
+
+  egress-controller:
+    build: ./egress-controller
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - recordings:/recordings
+    depends_on:
+      - livekit
+    networks:
+      - livekit-net
+
+volumes:
+  recordings:
+    driver: local
+
+networks:
+  livekit-net:
+    driver: bridge
