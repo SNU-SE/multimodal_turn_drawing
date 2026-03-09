@@ -16,6 +16,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@supabase/supabase-js": "^2.98.0",
     "@turn-based-drawing/supabase": "workspace:*",
+    "livekit-client": "^2.17.2",
     "perfect-freehand": "^1.2.3",
     "radix-ui": "^1.4.3",
     "react": "^19.2.0",
