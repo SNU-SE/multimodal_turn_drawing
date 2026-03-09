@@ -555,7 +555,7 @@ export default function MainGame() {
 
                 {/* Question Area */}
                 <div className="flex-1 p-6 flex flex-col items-center justify-center border-b bg-white overflow-hidden relative">
-                    <p className="text-sm font-medium text-muted-foreground absolute top-4 left-4">Question</p>
+                    {/* Question label removed for cleaner UI */}
                     <div className="w-full h-full flex flex-col items-center justify-center gap-4 overflow-auto">
                         {/* Content text */}
                         {currentQuestionObj?.content && (
