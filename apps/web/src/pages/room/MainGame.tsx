@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { useNavigate } from "react-router-dom"
 import { Pointer, Edit3, Trash2, Send, CheckCircle2, Trophy, Eraser, ImageIcon, RotateCcw, ArrowLeft, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { FreehandCanvas } from "@/components/canvas/FreehandCanvas"
 import { useRoomStore } from "@/store/roomStore"
+import { useMediaStore } from "@/store/mediaStore"
+import { VideoPanel } from "@/components/media/VideoPanel"
 import { supabase } from "@/lib/supabase"
 
 export default function MainGame() {
@@ -24,7 +26,143 @@ export default function MainGame() {
         turnAcknowledged,
     } = useRoomStore()
 
+    // Initialize media store subscription (ensures component re-renders on media state changes)
+    useMediaStore()
+
     const navigate = useNavigate()
+
+    // Player labels for VideoPanel
+    const myAlias = isPlayer1 ? '플레이어 1' : '플레이어 2'
+    const partnerAlias = isPlayer1 ? '플레이어 2' : '플레이어 1'
+
+    // Ref for the canvas wrapper div (used for canvas stream + cursor tracking)
+    const canvasWrapperRef = useRef<HTMLDivElement>(null)
+    // Hidden canvas for SVG-to-canvas capture stream
+    const hiddenCanvasRef = useRef<HTMLCanvasElement>(null)
+    // Cursor state for partner
+    const [partnerCursor, setPartnerCursor] = useState<{ x: number; y: number } | null>(null)
+    const lastCursorSendRef = useRef(0)
+    const cursorChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+
+    // Connect to LiveKit when game starts playing
+    useEffect(() => {
+        if (room?.status !== 'playing' || !room?.id || !playerId) return
+        const ms = useMediaStore.getState()
+        if (ms.isConnected || ms.isConnecting) return
+
+        const connect = async () => {
+            await ms.connectToRoom(room.id, myAlias, 'player')
+
+            // After connection, set up SVG-to-canvas streaming
+            const svgEl = canvasWrapperRef.current?.querySelector('svg')
+            const hiddenCanvas = hiddenCanvasRef.current
+            if (svgEl && hiddenCanvas) {
+                const ctx = hiddenCanvas.getContext('2d')
+                if (!ctx) return
+
+                // Periodically render SVG to hidden canvas at ~10fps for stream
+                const renderLoop = () => {
+                    const rect = svgEl.getBoundingClientRect()
+                    hiddenCanvas.width = rect.width
+                    hiddenCanvas.height = rect.height
+
+                    const svgData = new XMLSerializer().serializeToString(svgEl)
+                    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+                    const url = URL.createObjectURL(blob)
+                    const img = new Image()
+                    img.onload = () => {
+                        ctx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height)
+                        ctx.drawImage(img, 0, 0)
+                        URL.revokeObjectURL(url)
+                    }
+                    img.src = url
+                }
+
+                // Initial render then start interval
+                renderLoop()
+                const intervalId = setInterval(renderLoop, 100) // 10fps
+
+                // Small delay to ensure canvas has content, then publish
+                setTimeout(async () => {
+                    try {
+                        await useMediaStore.getState().publishCanvasTrack(hiddenCanvas)
+                    } catch (err) {
+                        console.warn('[MainGame] Failed to publish canvas track:', err)
+                    }
+                }, 500)
+
+                return () => clearInterval(intervalId)
+            }
+        }
+
+        connect()
+    }, [room?.status, room?.id, playerId])
+
+    // Set up cursor broadcasting channel
+    useEffect(() => {
+        if (!room?.id || !playerId) return
+
+        const cursorChannel = supabase.channel(`cursor:${room.id}`, {
+            config: { broadcast: { self: false } },
+        })
+
+        cursorChannel.on('broadcast', { event: 'cursor' }, (msg) => {
+            const { x, y, senderId } = msg.payload
+            if (senderId !== playerId) {
+                setPartnerCursor({ x, y })
+            }
+        })
+
+        cursorChannel.subscribe()
+        cursorChannelRef.current = cursorChannel
+
+        return () => {
+            supabase.removeChannel(cursorChannel)
+            cursorChannelRef.current = null
+        }
+    }, [room?.id, playerId])
+
+    // Throttled cursor broadcast handler
+    const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        const now = Date.now()
+        if (now - lastCursorSendRef.current < 100) return // throttle to ~10/sec
+        lastCursorSendRef.current = now
+
+        const rect = e.currentTarget.getBoundingClientRect()
+        const x = ((e.clientX - rect.left) / rect.width) * 100 // percentage
+        const y = ((e.clientY - rect.top) / rect.height) * 100
+
+        cursorChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'cursor',
+            payload: { x, y, senderId: playerId },
+        })
+    }, [playerId])
+
+    const handleCanvasTouchMove = useCallback((e: React.TouchEvent<HTMLDivElement>) => {
+        const now = Date.now()
+        if (now - lastCursorSendRef.current < 100) return
+        lastCursorSendRef.current = now
+
+        const touch = e.touches[0]
+        if (!touch) return
+        const rect = e.currentTarget.getBoundingClientRect()
+        const x = ((touch.clientX - rect.left) / rect.width) * 100
+        const y = ((touch.clientY - rect.top) / rect.height) * 100
+
+        cursorChannelRef.current?.send({
+            type: 'broadcast',
+            event: 'cursor',
+            payload: { x, y, senderId: playerId },
+        })
+    }, [playerId])
+
+    // Disconnect media on unmount
+    useEffect(() => {
+        return () => {
+            useMediaStore.getState().disconnect()
+        }
+    }, [])
 
     // Turn State
     const turnState = room?.turn_state as any
@@ -383,8 +521,20 @@ export default function MainGame() {
             {/* LEFT 1/3: Question & Answer Sidebar */}
             <aside className="w-1/3 flex flex-col border-r border-border bg-card shrink-0 shadow-sm z-10">
 
+                {/* Video Panel (fixed at top) */}
+                <div className="shrink-0 border-b p-2">
+                    <VideoPanel
+                        myLabel={myAlias}
+                        partnerLabel={partnerAlias}
+                        isRecording={room?.status === 'playing'}
+                    />
+                </div>
+
+                {/* Scrollable container for question info, question content, and answer */}
+                <div className="flex-1 flex flex-col overflow-y-auto">
+
                 {/* Header - Question Info */}
-                <div className="p-4 border-b bg-muted/20 flex justify-between items-center">
+                <div className="p-4 border-b bg-muted/20 flex justify-between items-center shrink-0">
                     <div className="flex items-center gap-3">
                         <span className="font-mono bg-background border px-2 py-1 rounded-md text-sm font-bold shadow-sm">
                             ROOM {room?.code}
@@ -613,7 +763,12 @@ export default function MainGame() {
                         </div>
                     )}
                 </div>
+
+                </div>{/* end scrollable container */}
             </aside>
+
+            {/* Hidden canvas for SVG-to-canvas stream capture */}
+            <canvas ref={hiddenCanvasRef} className="hidden" />
 
             {/* RIGHT 2/3: Canvas & Toolbar */}
             <main className="flex-1 flex flex-col bg-muted/10 relative">
@@ -688,7 +843,12 @@ export default function MainGame() {
 
                 {/* Canvas Content */}
                 <div className="flex-1 p-6 relative">
-                    <div className="absolute inset-6 rounded-2xl overflow-hidden shadow-sm border bg-white">
+                    <div
+                        ref={canvasWrapperRef}
+                        className="absolute inset-6 rounded-2xl overflow-hidden shadow-sm border bg-white"
+                        onMouseMove={handleCanvasMouseMove}
+                        onTouchMove={handleCanvasTouchMove}
+                    >
                         <FreehandCanvas
                             color={color}
                             width={width}
@@ -707,6 +867,21 @@ export default function MainGame() {
                             onImageUpdate={(img) => useRoomStore.setState({ canvasImage: img })}
                             onImageUpdateEnd={(img) => updateImage(img)}
                         />
+                        {/* Partner cursor overlay */}
+                        {partnerCursor && (
+                            <div
+                                className="absolute rounded-full pointer-events-none z-20 transition-all duration-75"
+                                style={{
+                                    left: `${partnerCursor.x}%`,
+                                    top: `${partnerCursor.y}%`,
+                                    width: 12,
+                                    height: 12,
+                                    backgroundColor: isPlayer1 ? '#5386E4' : '#F45B69',
+                                    transform: 'translate(-50%, -50%)',
+                                    opacity: 0.7,
+                                }}
+                            />
+                        )}
                     </div>
                 </div>
 
