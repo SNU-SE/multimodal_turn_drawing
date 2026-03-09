@@ -9,6 +9,7 @@ import { useRoomStore } from "@/store/roomStore"
 import { useMediaStore } from "@/store/mediaStore"
 import { VideoPanel } from "@/components/media/VideoPanel"
 import { supabase } from "@/lib/supabase"
+import { startEgress, stopEgress } from "@/lib/livekit"
 
 export default function MainGame() {
     const {
@@ -23,11 +24,10 @@ export default function MainGame() {
         requestRetry, requestComplete, approveRequest, rejectRequest,
         sessionTimeLimit,
         logEvent,
-        turnAcknowledged,
     } = useRoomStore()
 
     // Initialize media store subscription (ensures component re-renders on media state changes)
-    useMediaStore()
+    const { remoteCameraTrack, isConnected: mediaConnected } = useMediaStore()
 
     const navigate = useNavigate()
 
@@ -43,6 +43,7 @@ export default function MainGame() {
     const [partnerCursor, setPartnerCursor] = useState<{ x: number; y: number } | null>(null)
     const lastCursorSendRef = useRef(0)
     const cursorChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+    const egressStartedRef = useRef(false)
 
     // Connect to LiveKit when game starts playing
     useEffect(() => {
@@ -97,6 +98,35 @@ export default function MainGame() {
 
         connect()
     }, [room?.status, room?.id, playerId])
+
+    // Start recording when both players have published tracks (Player 1 triggers)
+    useEffect(() => {
+        if (!room?.id || !isPlayer1 || egressStartedRef.current) return
+        if (room?.status !== 'playing') return
+        if (!mediaConnected || !remoteCameraTrack) return
+
+        egressStartedRef.current = true
+        // Delay to ensure both players' screen share (canvas) tracks are published
+        const timer = setTimeout(() => {
+            startEgress(room.id)
+                .then((res) => console.log('[MainGame] Egress started:', res))
+                .catch((err) => {
+                    console.error('[MainGame] Failed to start egress:', err)
+                    egressStartedRef.current = false
+                })
+        }, 3000)
+        return () => clearTimeout(timer)
+    }, [room?.id, room?.status, isPlayer1, mediaConnected, remoteCameraTrack])
+
+    // Stop recording when game ends
+    useEffect(() => {
+        if (!room?.id || room?.status !== 'completed') return
+        if (!egressStartedRef.current) return
+
+        stopEgress(room.id)
+            .then(() => console.log('[MainGame] Egress stopped'))
+            .catch((err) => console.error('[MainGame] Failed to stop egress:', err))
+    }, [room?.id, room?.status])
 
     // Set up cursor broadcasting channel
     useEffect(() => {
@@ -283,6 +313,8 @@ export default function MainGame() {
 
     // Guard to prevent double-firing endTurn
     const isEndingTurnRef = useRef(false)
+    // Track previous timeLeft to detect countdown-to-zero (vs already-zero on turn switch)
+    const prevTimeLeftRef = useRef(timeLeft)
 
     const handleEndTurn = async (reason?: 'manual' | 'timer_expired') => {
         if (isEndingTurnRef.current || !isMyTurn) return
@@ -328,12 +360,13 @@ export default function MainGame() {
         return () => clearInterval(timer)
     }, [turnState?.isPaused, timeLeft])
 
-    // Auto-end turn when timer hits 0 (only if server acknowledged the last turn switch)
+    // Auto-end turn when timer actually counts DOWN to 0 (not when it's already 0 during a turn switch)
     useEffect(() => {
-        if (timeLeft === 0 && isMyTurn && turnAcknowledged) {
+        if (prevTimeLeftRef.current > 0 && timeLeft === 0 && isMyTurn) {
             handleEndTurn('timer_expired')
         }
-    }, [timeLeft, isMyTurn, turnAcknowledged])
+        prevTimeLeftRef.current = timeLeft
+    }, [timeLeft, isMyTurn])
 
     // Reset local time when turn switches or question advances
     useEffect(() => {

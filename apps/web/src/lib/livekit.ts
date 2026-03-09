@@ -17,3 +17,27 @@ export async function fetchLivekitToken(
   const data = await res.json()
   return data.token
 }
+
+export async function startEgress(roomId: string): Promise<{ sessionId: string }> {
+  const res = await fetch(`${EGRESS_CONTROLLER_URL}/api/egress/start`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roomId }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }))
+    throw new Error(err.error || 'Failed to start egress')
+  }
+  return res.json()
+}
+
+export async function stopEgress(roomId: string): Promise<void> {
+  const res = await fetch(`${EGRESS_CONTROLLER_URL}/api/egress/stop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roomId }),
+  })
+  if (!res.ok) {
+    console.error('[stopEgress] Failed:', await res.text())
+  }
+}

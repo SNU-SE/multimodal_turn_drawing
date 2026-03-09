@@ -33,7 +33,7 @@ async function processNext() {
       .from('recording_files')
       .update({ status: 'failed' })
       .eq('room_id', job.roomId)
-      .eq('file_type', 'composite')
+      .eq('session_id', job.sessionId)
   } finally {
     isProcessing = false
     processNext()
@@ -53,7 +53,12 @@ async function createComposite(roomId: string, sessionId: string) {
   const inputs = [p1Face, p2Face, p1Screen, p2Screen]
   for (const input of inputs) {
     if (!fs.existsSync(input)) {
-      console.warn(`Missing input file: ${input}, skipping composite`)
+      console.error(`[postprocess] Missing input file: ${input}`)
+      await supabase
+        .from('recording_files')
+        .update({ status: 'failed' })
+        .eq('room_id', roomId)
+        .eq('session_id', sessionId)
       return
     }
   }
