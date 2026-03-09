@@ -392,6 +392,143 @@ export type Database = {
         }
         Relationships: []
       }
+      room_media_sessions: {
+        Row: {
+          id: string
+          room_id: string
+          livekit_room_name: string
+          livekit_status: 'pending' | 'active' | 'completed' | 'failed'
+          started_at: string | null
+          ended_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          room_id: string
+          livekit_room_name: string
+          livekit_status?: 'pending' | 'active' | 'completed' | 'failed'
+          started_at?: string | null
+          ended_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          room_id?: string
+          livekit_room_name?: string
+          livekit_status?: 'pending' | 'active' | 'completed' | 'failed'
+          started_at?: string | null
+          ended_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_media_sessions_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      recording_files: {
+        Row: {
+          id: string
+          room_id: string
+          session_id: string
+          file_type: 'p1_face' | 'p2_face' | 'p1_screen' | 'p2_screen' | 'composite'
+          file_path: string | null
+          gdrive_url: string | null
+          file_size: number | null
+          duration: number | null
+          status: 'recording' | 'processing' | 'uploaded' | 'failed'
+          egress_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          room_id: string
+          session_id: string
+          file_type: 'p1_face' | 'p2_face' | 'p1_screen' | 'p2_screen' | 'composite'
+          file_path?: string | null
+          gdrive_url?: string | null
+          file_size?: number | null
+          duration?: number | null
+          status?: 'recording' | 'processing' | 'uploaded' | 'failed'
+          egress_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          room_id?: string
+          session_id?: string
+          file_type?: 'p1_face' | 'p2_face' | 'p1_screen' | 'p2_screen' | 'composite'
+          file_path?: string | null
+          gdrive_url?: string | null
+          file_size?: number | null
+          duration?: number | null
+          status?: 'recording' | 'processing' | 'uploaded' | 'failed'
+          egress_id?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recording_files_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "recording_files_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "room_media_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cursor_logs: {
+        Row: {
+          id: string
+          room_id: string
+          player_id: string
+          x: number
+          y: number
+          timestamp: string
+        }
+        Insert: {
+          id?: string
+          room_id: string
+          player_id: string
+          x: number
+          y: number
+          timestamp?: string
+        }
+        Update: {
+          id?: string
+          room_id?: string
+          player_id?: string
+          x?: number
+          y?: number
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cursor_logs_room_id_fkey"
+            columns: ["room_id"]
+            isOneToOne: false
+            referencedRelation: "rooms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "cursor_logs_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
