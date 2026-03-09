@@ -78,6 +78,9 @@ export function FreehandCanvas({
     const erasedDuringDragRef = useRef<Set<string>>(new Set())
     const isErasingRef = useRef(false)
 
+    // Palm rejection: when a pen is detected, ignore touch input
+    const penDetectedRef = useRef(false)
+
     // Image drag/resize state
     const imageDragRef = useRef<{
         type: 'move' | 'resize'
@@ -110,6 +113,14 @@ export function FreehandCanvas({
     // ── Pointer handlers ──
     const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled) return
+
+        // Palm rejection: pen takes priority over touch
+        if (e.pointerType === 'pen') {
+            penDetectedRef.current = true
+        }
+        if (e.pointerType === 'touch' && penDetectedRef.current) {
+            return // Ignore touch when pen is active
+        }
 
         // Image edit mode: handle image drag/resize
         if (imageEditMode && canvasImage) {
@@ -165,6 +176,7 @@ export function FreehandCanvas({
 
     const handlePointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
         if (disabled) return
+        if (e.pointerType === 'touch' && penDetectedRef.current) return
 
         // Image drag/resize
         if (imageDragRef.current && canvasImage && onImageUpdate) {
@@ -261,7 +273,7 @@ export function FreehandCanvas({
                 : 'cursor-crosshair'
 
     return (
-        <div className={`w-full h-full overflow-hidden ${cursorClass}`}>
+        <div className={`w-full h-full overflow-hidden select-none ${cursorClass}`} style={{ WebkitTouchCallout: 'none' }}>
             <svg
                 ref={svgRef}
                 className="w-full h-full touch-none bg-white"

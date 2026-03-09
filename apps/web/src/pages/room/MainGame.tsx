@@ -878,7 +878,8 @@ export default function MainGame() {
                 <div className="flex-1 p-6 relative">
                     <div
                         ref={canvasWrapperRef}
-                        className="absolute inset-6 rounded-2xl overflow-hidden shadow-sm border bg-white"
+                        className="absolute inset-6 rounded-2xl overflow-hidden shadow-sm border bg-white touch-none select-none"
+                        style={{ WebkitTouchCallout: 'none' }}
                         onMouseMove={handleCanvasMouseMove}
                         onTouchMove={handleCanvasTouchMove}
                     >
