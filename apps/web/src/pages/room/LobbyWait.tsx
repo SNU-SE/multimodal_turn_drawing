@@ -1,13 +1,17 @@
 import { useRoomStore } from "@/store/roomStore"
-import { Info, Eraser } from "lucide-react"
+import { useMediaStore } from "@/store/mediaStore"
+import { VideoTile } from "@/components/media/VideoTile"
+import { Info, Eraser, Mic, MicOff, Camera, CameraOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { FreehandCanvas } from "@/components/canvas/FreehandCanvas"
 import { logger } from "@/lib/logger"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 
 export default function LobbyWait() {
     const { room, isPlayer1, partnerReady, isReady, toggleReady, strokes, addStroke, clearStrokes } = useRoomStore()
+    const { localCameraTrack, localMicTrack, isMicMuted, isCameraOff, initLocalMedia, toggleMic, toggleCamera } = useMediaStore()
+    const [mediaError, setMediaError] = useState<string | null>(null)
 
     useEffect(() => {
         logger.info(`Lobby Wait. Room: ${room?.id}, isPlayer1: ${isPlayer1}, isReady: ${isReady}, partnerReady: ${partnerReady}`)
@@ -15,6 +19,22 @@ export default function LobbyWait() {
 
     const playerColor = isPlayer1 ? "#F45B69" : "#5386E4"
     const playerRoleName = isPlayer1 ? "플레이어 1" : "플레이어 2"
+
+    const handleReadyClick = async () => {
+        // If toggling TO ready and media not yet initialized, init media first
+        if (!isReady && !localCameraTrack && !localMicTrack) {
+            try {
+                setMediaError(null)
+                await initLocalMedia()
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : "미디어 초기화 실패"
+                logger.error(`Media init failed: ${msg}`)
+                setMediaError(msg)
+                // Non-blocking: proceed with ready even if media fails
+            }
+        }
+        toggleReady()
+    }
 
     return (
         <div className="flex flex-col h-screen bg-background">
@@ -39,7 +59,7 @@ export default function LobbyWait() {
                         <span className="text-sm font-medium">상대방: {partnerReady ? "준비 완료" : "대기중"}</span>
                     </div>
                     <Button
-                        onClick={() => toggleReady()}
+                        onClick={handleReadyClick}
                         variant={isReady ? "outline" : "default"}
                         className={!isReady ? "bg-primary hover:bg-primary/90 min-w-[120px]" : "min-w-[120px]"}
                     >
@@ -51,8 +71,70 @@ export default function LobbyWait() {
             {/* Main Content Area */}
             <main className="flex-1 overflow-hidden p-6 flex gap-6">
 
-                {/* Left Side: Info */}
-                <aside className="w-80 flex flex-col gap-6 shrink-0">
+                {/* Left Side: Camera Preview + Info */}
+                <aside className="w-80 flex flex-col gap-4 shrink-0">
+                    {/* Camera Preview */}
+                    <Card>
+                        <CardContent className="pt-4 pb-4 flex flex-col gap-3">
+                            <VideoTile
+                                track={localCameraTrack}
+                                label={playerRoleName}
+                                isMirrored
+                                showMuteButton
+                                isMuted={isMicMuted}
+                                onToggleMute={() => toggleMic()}
+                            />
+
+                            {/* Media status indicators */}
+                            <div className="flex flex-col gap-1.5 text-sm">
+                                <div className="flex items-center gap-2">
+                                    <span className={`inline-block w-2 h-2 rounded-full ${isCameraOff ? 'bg-red-500' : 'bg-green-500'}`} />
+                                    <span className="text-muted-foreground">
+                                        {isCameraOff ? "카메라 꺼짐" : "카메라 켜짐"}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className={`inline-block w-2 h-2 rounded-full ${isMicMuted ? 'bg-red-500' : 'bg-green-500'}`} />
+                                    <span className="text-muted-foreground">
+                                        {isMicMuted ? "마이크 꺼짐" : "마이크 켜짐"}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Mic/Camera toggle buttons */}
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => toggleMic()}
+                                    disabled={!localMicTrack}
+                                    className="flex-1 gap-1.5"
+                                >
+                                    {isMicMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                                    {isMicMuted ? "음소거 해제" : "음소거"}
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => toggleCamera()}
+                                    disabled={!localCameraTrack}
+                                    className="flex-1 gap-1.5"
+                                >
+                                    {isCameraOff ? <CameraOff className="w-4 h-4" /> : <Camera className="w-4 h-4" />}
+                                    {isCameraOff ? "카메라 켜기" : "카메라 끄기"}
+                                </Button>
+                            </div>
+
+                            {/* Media error message */}
+                            {mediaError && (
+                                <p className="text-xs text-destructive">
+                                    미디어 오류: {mediaError}
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Player info card */}
                     <Card>
                         <CardContent className="pt-6 flex flex-col items-center text-center gap-4">
                             <div
