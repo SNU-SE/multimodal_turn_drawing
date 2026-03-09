@@ -1,4 +1,4 @@
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, useLocation } from "react-router-dom"
 import { Users, PlayCircle, CheckCircle, Clock, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -19,6 +19,16 @@ interface GroupStats {
 export default function AdminDashboard() {
     const [groups, setGroups] = useState<GroupStats[]>([])
     const navigate = useNavigate()
+    const location = useLocation()
+
+    /** Build absolute path to a group detail page, works for both superadmin and org admin */
+    const groupHref = (id: string) => {
+        const base = location.pathname.replace(/\/?$/, '')
+        // superadmin: /superadmin/groups → /superadmin/groups/{id}
+        if (base.endsWith('/groups')) return `${base}/${id}`
+        // org admin index: /{neis}/admin → /{neis}/admin/groups/{id}
+        return `${base}/groups/${id}`
+    }
 
     const fetchGroups = async () => {
         logger.info("Admin fetching room groups...")
@@ -85,8 +95,8 @@ export default function AdminDashboard() {
             return
         }
 
-        // Navigate to the newly created group (relative path works for both super_admin and org routes)
-        navigate(`groups/${data.id}`)
+        // Navigate to the newly created group (absolute path for reliable routing)
+        navigate(groupHref(data.id))
     }
 
     return (
@@ -103,7 +113,7 @@ export default function AdminDashboard() {
 
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {groups.map((group) => (
-                    <Link key={group.id} to={`groups/${group.id}`}>
+                    <Link key={group.id} to={groupHref(group.id)}>
                         <Card className="hover:border-primary/50 transition-colors cursor-pointer relative group">
                             <Button
                                 variant="destructive"
