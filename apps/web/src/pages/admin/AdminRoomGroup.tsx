@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useParams, Link, useNavigate } from "react-router-dom"
 import { ArrowLeft, ArrowUp, ArrowDown, Download, Upload, Loader2, Trash2, Settings, PlusCircle, Clock, Pencil, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +40,7 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 
 export default function AdminRoomGroup() {
     const { groupId } = useParams()
+    const navigate = useNavigate()
     const [rooms, setRooms] = useState<RoomRow[]>([])
     const [groupName, setGroupName] = useState("...")
     const [groupQuestionIds, setGroupQuestionIds] = useState<string[]>([])
@@ -670,11 +671,34 @@ export default function AdminRoomGroup() {
                                 </TableCell>
                                 <TableCell className="text-right">
                                     <div className="flex justify-end gap-1">
-                                        <Link to={`../recap/${room.id}`}>
-                                            <Button variant="ghost" size="sm">
-                                                리캡 보기
+                                        {room.status === 'playing' && (
+                                            <Button
+                                                size="sm"
+                                                className="bg-blue-500 text-white hover:bg-blue-600 gap-1"
+                                                onClick={() => navigate(`../observe/${room.id}`)}
+                                            >
+                                                👁 관찰
                                             </Button>
-                                        </Link>
+                                        )}
+                                        {room.status === 'completed' && (
+                                            <>
+                                                <Button
+                                                    size="sm"
+                                                    className="bg-green-600 text-white hover:bg-green-700 gap-1"
+                                                    onClick={() => navigate(`../recordings/${room.id}`)}
+                                                >
+                                                    ▶️ 영상 보기
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="gap-1"
+                                                    onClick={() => navigate(`../recordings/${room.id}`)}
+                                                >
+                                                    📥 다운로드
+                                                </Button>
+                                            </>
+                                        )}
                                         <Button variant="ghost" size="sm" onClick={() => {
                                             setEditingRoom(room)
                                             setEditCode(room.code || '')
