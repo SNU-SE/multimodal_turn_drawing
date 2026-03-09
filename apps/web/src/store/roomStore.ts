@@ -845,7 +845,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const currentTurnState = room.turn_state as any
             const payload = {
                 current_question_index: nextIndex,
-                turn_state: { ...currentTurnState, currentPlayerId: room.player1_id, timeLeft: nextTimeLeft, isPaused: false }
+                turn_state: { ...currentTurnState, currentPlayerId: currentTurnState?.currentPlayerId || room.player1_id, timeLeft: nextTimeLeft, isPaused: false }
             }
 
             await (supabase as any).from('rooms').update(payload).eq('id', room.id)
@@ -919,9 +919,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const prevQuestion = questions[prevIndex]
             const timeLeft = resolveTimeLimit(prevQuestion?.default_time_limit)
 
+            const currentTurnState = room.turn_state as any
             const payload = {
                 current_question_index: prevIndex,
-                turn_state: { currentPlayerId: room.player1_id, timeLeft, isPaused: false }
+                turn_state: { ...currentTurnState, currentPlayerId: currentTurnState?.currentPlayerId || room.player1_id, timeLeft, isPaused: false }
             }
             await (supabase as any).from('rooms').update(payload).eq('id', room.id)
             logTurnEvent('question_back', { fromIndex: currentIndex, toIndex: prevIndex })
@@ -958,10 +959,12 @@ export const useRoomStore = create<RoomState>((set, get) => {
             const question = questions[questionIndex]
             const timeLeft = resolveTimeLimit(question?.default_time_limit)
 
+            const currentTurnState = room.turn_state as any
             const payload = {
                 current_question_index: questionIndex,
                 turn_state: {
-                    currentPlayerId: room.player1_id,
+                    ...currentTurnState,
+                    currentPlayerId: currentTurnState?.currentPlayerId || room.player1_id,
                     timeLeft,
                     isPaused: false,
                     isReviewMode: true,
