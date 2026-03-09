@@ -15,6 +15,7 @@ import AdminRoomGroup from "./pages/admin/AdminRoomGroup"
 import AdminRecap from "./pages/admin/AdminRecap"
 import AdminBank from "./pages/admin/AdminBank"
 import AdminObserve from "./pages/admin/AdminObserve"
+import AdminRecordingViewer from "./pages/admin/AdminRecordingViewer"
 // Auth
 import AuthGuard from "./components/auth/AuthGuard"
 // Player
@@ -40,6 +41,7 @@ export default function App() {
                     <Route path="groups/:groupId" element={<AdminRoomGroup />} />
                     <Route path="recap/:roomId" element={<AdminRecap />} />
                     <Route path="observe/:roomId" element={<AdminObserve />} />
+                    <Route path="recordings/:roomId" element={<AdminRecordingViewer />} />
                     <Route path="questions" element={<AdminBank />} />
                 </Route>
 
@@ -54,6 +56,7 @@ export default function App() {
                     <Route path="groups/:groupId" element={<AdminRoomGroup />} />
                     <Route path="recap/:roomId" element={<AdminRecap />} />
                     <Route path="observe/:roomId" element={<AdminObserve />} />
+                    <Route path="recordings/:roomId" element={<AdminRecordingViewer />} />
                     <Route path="questions" element={<AdminBank />} />
                 </Route>
 
