@@ -1,0 +1,2 @@
+# Upload recordings to Google Drive every 5 minutes
+*/5 * * * * root /opt/scripts/upload-recordings.sh
