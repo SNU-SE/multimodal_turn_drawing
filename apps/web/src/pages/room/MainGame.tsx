@@ -428,6 +428,7 @@ export default function MainGame() {
     }, [turnState?.isPaused, timeLeft])
 
     // Auto-end turn when timer actually counts DOWN to 0 (not when it's already 0 during a turn switch)
+    // Only the current turn player fires endTurn to prevent double-switching
     useEffect(() => {
         if (prevTimeLeftRef.current > 0 && timeLeft === 0 && isMyTurn) {
             handleEndTurn('timer_expired')
@@ -436,11 +437,21 @@ export default function MainGame() {
     }, [timeLeft, isMyTurn])
 
     // Reset local time when turn switches or question advances
+    // Use currentPlayerId as the only trigger (not timeLeft) to avoid polling/broadcast re-resets
+    const prevTurnPlayerRef = useRef(currentPlayerId)
+    const prevQuestionIdxRef = useRef(currentQuestionIndex)
     useEffect(() => {
-        if (turnState?.timeLeft) {
+        const turnPlayerChanged = prevTurnPlayerRef.current !== currentPlayerId
+        const questionChanged = prevQuestionIdxRef.current !== currentQuestionIndex
+        prevTurnPlayerRef.current = currentPlayerId
+        prevQuestionIdxRef.current = currentQuestionIndex
+
+        if ((turnPlayerChanged || questionChanged) && turnState?.timeLeft) {
             setTimeLeft(turnState.timeLeft)
+            // Reset prevTimeLeftRef so the new turn's countdown-to-zero detection works correctly
+            prevTimeLeftRef.current = turnState.timeLeft
         }
-    }, [turnState?.currentPlayerId, currentQuestionIndex, turnState?.timeLeft])
+    }, [currentPlayerId, currentQuestionIndex, turnState?.timeLeft])
 
     // Approval system state
     const pendingRequest = turnState?.pendingRequest as {
@@ -470,7 +481,7 @@ export default function MainGame() {
         const sessionExpired = hasSessionLimit && sessionSecondsLeft !== null && sessionSecondsLeft <= 0
 
         return (
-            <div className="flex h-screen w-full bg-background items-center justify-center">
+            <div className="flex h-screen w-full bg-background items-center justify-center select-none" style={{ WebkitUserSelect: 'none' }}>
                 <Card className="shadow-2xl border-primary/20 max-w-2xl w-full mx-4">
                     <CardContent className="p-8 flex flex-col items-center gap-6">
                         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
@@ -583,7 +594,7 @@ export default function MainGame() {
     }
 
     return (
-        <div className="flex flex-col h-screen w-full bg-background overflow-hidden relative">
+        <div className="flex flex-col h-screen w-full bg-background overflow-hidden relative select-none" style={{ WebkitUserSelect: 'none' }}>
 
             {/* Session Countdown Bar */}
             {hasSessionLimit && sessionSecondsLeft !== null && room?.status === 'playing' && (

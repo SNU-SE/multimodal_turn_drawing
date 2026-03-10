@@ -896,7 +896,8 @@ export const useRoomStore = create<RoomState>((set, get) => {
             if (!room) return
 
             const turnState = room.turn_state as any
-            const nextPlayerId = room.player1_id === get().playerId ? room.player2_id : room.player1_id
+            const currentTurnPlayer = turnState?.currentPlayerId || room.player1_id
+            const nextPlayerId = currentTurnPlayer === room.player1_id ? room.player2_id : room.player1_id
             const currentQ = questions[room.current_question_index ?? 0]
             const nextTimeLeft = resolveTimeLimit(currentQ?.default_time_limit)
 
