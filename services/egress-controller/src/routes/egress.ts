@@ -38,7 +38,7 @@ router.post('/start', async (req, res) => {
       return
     }
 
-    const roomName = `room:${roomId}`
+    const roomName = roomId
 
     // Idempotency: check if already recording
     const { data: existing } = await supabase
