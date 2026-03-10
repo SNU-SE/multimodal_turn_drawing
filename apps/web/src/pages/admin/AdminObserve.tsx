@@ -74,7 +74,7 @@ export default function AdminObserve() {
                 .from("room_questions")
                 .select("*, questions(*)")
                 .eq("room_id", roomId)
-                .order("sort_order", { ascending: true })
+                .order("created_at", { ascending: true })
 
             if (rqData) {
                 setRoomQuestions(rqData)
@@ -102,7 +102,7 @@ export default function AdminObserve() {
                 .from("room_questions")
                 .select("*, questions(*)")
                 .eq("room_id", roomId)
-                .order("sort_order", { ascending: true })
+                .order("created_at", { ascending: true })
 
             if (rqData) {
                 setRoomQuestions(rqData)
