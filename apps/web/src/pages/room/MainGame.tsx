@@ -51,8 +51,14 @@ export default function MainGame() {
         const ms = useMediaStore.getState()
         if (ms.isConnected || ms.isConnecting) return
 
+        let cleanupFn: (() => void) | undefined
+        let cancelled = false
+
         const connect = async () => {
             await ms.connectToRoom(room.id, myAlias, 'player')
+
+            // Bail out if component unmounted during connection
+            if (cancelled) return
 
             // After connection, set up SVG-to-canvas streaming
             const svgEl = canvasWrapperRef.current?.querySelector('svg')
@@ -61,29 +67,81 @@ export default function MainGame() {
                 const ctx = hiddenCanvas.getContext('2d')
                 if (!ctx) return
 
-                // Periodically render SVG to hidden canvas at ~10fps for stream
-                const renderLoop = () => {
-                    const rect = svgEl.getBoundingClientRect()
-                    hiddenCanvas.width = rect.width
-                    hiddenCanvas.height = rect.height
+                // Double buffer: offscreen canvas to avoid blank frames during async image loading
+                const offscreen = document.createElement('canvas')
+                const offCtx = offscreen.getContext('2d')!
 
-                    const svgData = new XMLSerializer().serializeToString(svgEl)
-                    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
-                    const url = URL.createObjectURL(blob)
-                    const img = new Image()
-                    img.onload = () => {
-                        ctx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height)
-                        ctx.drawImage(img, 0, 0)
-                        URL.revokeObjectURL(url)
+                let lastWidth = 0
+                let lastHeight = 0
+                let lastFrameTime = 0
+                let rafId: number
+                const FRAME_INTERVAL = 1000 / 30 // 30fps target
+
+                // Pre-create reusable Image object to reduce GC pressure
+                const img = new Image()
+                let pendingBlobUrl: string | null = null
+
+                img.onload = () => {
+                    // Draw to offscreen canvas first (never leaves main canvas blank)
+                    offCtx.clearRect(0, 0, offscreen.width, offscreen.height)
+                    offCtx.drawImage(img, 0, 0)
+
+                    // Copy offscreen → main canvas (atomic, no blank frame possible)
+                    ctx.clearRect(0, 0, hiddenCanvas.width, hiddenCanvas.height)
+                    ctx.drawImage(offscreen, 0, 0)
+
+                    // Cleanup blob URL after successful draw
+                    if (pendingBlobUrl) {
+                        URL.revokeObjectURL(pendingBlobUrl)
+                        pendingBlobUrl = null
                     }
-                    img.src = url
                 }
 
-                // Initial render then start interval
-                renderLoop()
-                const intervalId = setInterval(renderLoop, 100) // 10fps
+                img.onerror = () => {
+                    console.warn('[MainGame] SVG-to-image render failed')
+                    if (pendingBlobUrl) {
+                        URL.revokeObjectURL(pendingBlobUrl)
+                        pendingBlobUrl = null
+                    }
+                }
 
-                // Small delay to ensure canvas has content, then publish
+                const renderLoop = (timestamp: number) => {
+                    rafId = requestAnimationFrame(renderLoop)
+
+                    // Throttle to ~30fps
+                    if (timestamp - lastFrameTime < FRAME_INTERVAL) return
+                    lastFrameTime = timestamp
+
+                    const rect = svgEl.getBoundingClientRect()
+                    const w = Math.round(rect.width)
+                    const h = Math.round(rect.height)
+
+                    // Only resize canvases when dimensions actually change
+                    if (w !== lastWidth || h !== lastHeight) {
+                        hiddenCanvas.width = w
+                        hiddenCanvas.height = h
+                        offscreen.width = w
+                        offscreen.height = h
+                        lastWidth = w
+                        lastHeight = h
+                    }
+
+                    // Serialize SVG and load as image
+                    const svgData = new XMLSerializer().serializeToString(svgEl)
+                    const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' })
+
+                    // Cleanup previous pending blob if image hasn't loaded yet
+                    if (pendingBlobUrl) {
+                        URL.revokeObjectURL(pendingBlobUrl)
+                    }
+                    pendingBlobUrl = URL.createObjectURL(blob)
+                    img.src = pendingBlobUrl
+                }
+
+                // Start render loop
+                rafId = requestAnimationFrame(renderLoop)
+
+                // Publish canvas track after initial content is ready
                 setTimeout(async () => {
                     try {
                         await useMediaStore.getState().publishCanvasTrack(hiddenCanvas)
@@ -92,11 +150,20 @@ export default function MainGame() {
                     }
                 }, 500)
 
-                return () => clearInterval(intervalId)
+                // Store cleanup so useEffect can call it on unmount
+                cleanupFn = () => {
+                    cancelAnimationFrame(rafId)
+                    if (pendingBlobUrl) URL.revokeObjectURL(pendingBlobUrl)
+                }
             }
         }
 
         connect()
+
+        return () => {
+            cancelled = true
+            cleanupFn?.()
+        }
     }, [room?.status, room?.id, playerId])
 
     // Start recording when both players have published tracks (Player 1 triggers)

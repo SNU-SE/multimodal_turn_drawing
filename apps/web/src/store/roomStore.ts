@@ -84,6 +84,30 @@ export const useRoomStore = create<RoomState>((set, get) => {
     let groupTimeLimit: number | null = null
     let sessionTimeLimit: number | null = null  // 분 단위, null/0 = 제한 없음
 
+    // Convert external image URL to data URL for SVG serialization compatibility.
+    // SVG serialization creates an isolated context where external URLs cannot be resolved,
+    // causing images to be missing from the recording stream.
+    const convertImageToDataUrl = (originalUrl: string) => {
+        if (!originalUrl || originalUrl.startsWith('data:')) return
+        fetch(originalUrl)
+            .then(res => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.blob() })
+            .then(blob => {
+                const reader = new FileReader()
+                reader.onloadend = () => {
+                    const dataUrl = reader.result as string
+                    if (!dataUrl || !dataUrl.startsWith('data:')) return
+                    set((state) => {
+                        if (state.canvasImage && state.canvasImage.url === originalUrl) {
+                            return { canvasImage: { ...state.canvasImage, url: dataUrl } }
+                        }
+                        return {}
+                    })
+                }
+                reader.readAsDataURL(blob)
+            })
+            .catch((err) => { logger.warn('[convertImageToDataUrl] data URL 변환 실패:', err) })
+    }
+
     const resolveTimeLimit = (qDefault?: number) => groupTimeLimit ?? qDefault ?? 60
 
     // Handle room updates with canvas state management
@@ -275,6 +299,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     return updates
                 })
             }
+            // Convert polled image to data URL for recording
+            if (latestImage && latestImage.url) {
+                convertImageToDataUrl(latestImage.url)
+            }
         }, 2000)
     }
 
@@ -424,6 +452,10 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     strokes: existingStrokes, canvasImage: existingImage,
                     sessionTimeLimit,
                 })
+                // Convert restored image to data URL for recording
+                if (existingImage && existingImage.url) {
+                    convertImageToDataUrl(existingImage.url)
+                }
 
                 logTurnEvent('player_joined', { isPlayer1, roomCode: code })
 
@@ -509,7 +541,9 @@ export const useRoomStore = create<RoomState>((set, get) => {
                 channel.on('broadcast', { event: 'place_image' }, (msg) => {
                     logger.info('[수신:broadcast] place_image')
                     if (msg.payload?.image) {
-                        set({ canvasImage: msg.payload.image })
+                        const image = msg.payload.image as CanvasImage
+                        set({ canvasImage: image })
+                        convertImageToDataUrl(image.url)
                     }
                 })
                 channel.on('broadcast', { event: 'typing' }, (msg) => {
@@ -533,7 +567,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${room.id}` },
                     (payload: any) => {
                         logger.info('[수신:postgres] rooms UPDATE:', payload.new?.status)
-                        set({ room: payload.new as RoomRow })
+                        handleRoomUpdate(payload.new as RoomRow)
                     }
                 )
 
@@ -675,6 +709,7 @@ export const useRoomStore = create<RoomState>((set, get) => {
                     if (error) logger.error('[placeImage] DB 저장 실패:', error)
                 })
             }
+            convertImageToDataUrl(url)
         },
 
         updateImage: (image: CanvasImage) => {
